@@ -1,49 +1,37 @@
 import datetime
 import sys
 import os
+import ast
+import json
 import shutil
-import re
-from PIL import Image, ImageQt
-import zipfile
 from openpyxl import Workbook, load_workbook
 import configparser
-from io import StringIO, BytesIO
-from lxml import html
 
-from PyQt6.QtCore import Qt, QObject, QThread, pyqtSignal, QRegularExpression
+from PyQt6.QtCore import Qt, pyqtSignal, QRegularExpression
 from PyQt6.QtWidgets import (
     QApplication,
     QLabel,
     QMainWindow,
     QPushButton,
-    QWidget,
-    QGridLayout,
+    QWidget,    
     QLineEdit,
     QHBoxLayout,
-    QVBoxLayout,
-    QListWidget,    
-    QSpinBox,    
-    QTextEdit,
-    QProgressBar,    
+    QVBoxLayout,       
     QComboBox,
-    QAbstractItemView,
-    QTreeWidget,
-    QTreeWidgetItem,
-    QListWidgetItem,
-    QFileDialog,
-    QMessageBox,
-    QDateEdit,
-    QRadioButton,
-    QCheckBox,
+    QAbstractItemView,    
+    QFileDialog,    
+    QDateEdit,    
     QTableWidget,
     QTableWidgetItem,
     QHeaderView,
     QCompleter, 
-    QTabWidget   
+    QTabWidget,
+    QToolBar, 
+    QCheckBox   
     
                 
 )
-from PyQt6.QtGui import QIcon, QPixmap, QAction, QActionGroup, QMovie, QValidator, QDoubleValidator, QIntValidator, QRegularExpressionValidator
+from PyQt6.QtGui import QIcon, QAction, QIntValidator, QRegularExpressionValidator
 
 try:
     from ctypes import windll  # Only exists on Windows.
@@ -56,13 +44,17 @@ class AddBatchWindow(QWidget):
     added = pyqtSignal(list)
     finished = pyqtSignal()
 
-    def __init__(self, attr1, attr2, attrPack, attrLab):
+    def __init__(self, attr1, attr2, attrPack, attrLab, timenormal, timedensity, timemechanics, timereach):
         super().__init__()      
 
         self.attr1 = attr1
         self.attr2 = attr2        
         self.attrPackaging = attrPack
-        self.attrLab = attrLab        
+        self.attrLab = attrLab  
+        self.timeNormal = timenormal
+        self.timeDensity = timedensity
+        self.timeMechanics = timemechanics
+        self.timeReach = timereach      
 
         self.closeMenu = True
         self.setWindowTitle('Charge hinzufügen')
@@ -100,7 +92,7 @@ class AddBatchWindow(QWidget):
 
         self.listDeliveryDate = QDateEdit()
         self.listDeliveryDate.setFixedWidth(100)
-        self.listDeliveryDate.setDate(datetime.datetime.now() + datetime.timedelta(days=2))
+        self.listDeliveryDate.setDate(datetime.datetime.now() + datetime.timedelta(days=self.timeNormal))
         self.listDeliveryDate.setMouseTracking(False)
         
         self.listBatchSize = QLineEdit()
@@ -120,14 +112,16 @@ class AddBatchWindow(QWidget):
                        
         self.listLab = QComboBox()
         self.listLab.addItems(self.attrLab)
+        self.listLab.currentIndexChanged.connect(self.labChanged)
 
         self.closeButton = QPushButton('Schließen')
         self.closeButton.setFixedWidth(80)
-        self.closeButton.clicked.connect(self.close)  
+        self.closeButton.clicked.connect(self.close) 
 
         self.addButton = QPushButton('Hinzufügen')
         self.addButton.setFixedWidth(80)
-        self.addButton.clicked.connect(self.addBatchToList)     
+        self.addButton.clicked.connect(self.addBatchToList)  
+        self.addButton.setShortcut("Return")   
 
         layout2.addWidget(self.listCostumer)
         layout2.addWidget(self.listDispo)
@@ -159,9 +153,23 @@ class AddBatchWindow(QWidget):
 
     def addBatchToList(self):    
                  
-        batchArray = ['', '', '', '', self.listArticle.currentIndex(), '', self.listDispo.text(), self.listCostumer.currentIndex(), self.listPackaging.currentIndex(), self.listLab.currentIndex(), self.listDeliveryDate.date().toString('dd.MM.yyyy'), self.listBatchSize.text(), '' ] 
+        batchArray = ['', '', '', '', self.listArticle.currentText(), '', self.listDispo.text(), self.listCostumer.currentText(), self.listPackaging.currentIndex(), self.listLab.currentIndex(), self.listDeliveryDate.date().toString('dd.MM.yyyy'), self.listBatchSize.text(), '' ] 
 
-        self.added.emit(batchArray)     
+        self.added.emit(batchArray) 
+
+    def labChanged(self):        
+        
+        whichLab = self.sender().currentIndex()              
+
+        if whichLab == 0:     
+                self.listDeliveryDate.setDate(datetime.datetime.now() + datetime.timedelta(days=self.timeNormal))         
+        elif whichLab == 1:            
+            self.listDeliveryDate.setDate(datetime.datetime.now() + datetime.timedelta(days=self.timeDensity))   
+        elif whichLab == 2:            
+            self.listDeliveryDate.setDate(datetime.datetime.now() + datetime.timedelta(days=self.timeMechanics))                               
+        elif whichLab == 3:            
+            self.listDeliveryDate.setDate(datetime.datetime.now() + datetime.timedelta(days=self.timeReach))
+            
                    
     def closeEvent(self, event):
         
@@ -171,7 +179,7 @@ class AddBatchWindow(QWidget):
         else:
             event.ignore()
 
-class SettingshWindow(QWidget):
+class SettingsWindow(QWidget):
     added = pyqtSignal(list)
     finished = pyqtSignal()
 
@@ -201,13 +209,15 @@ class SettingshWindow(QWidget):
         self.sortByBox.setCurrentIndex(self.sortBy)
         self.sortByBox.InsertPolicy.InsertAlphabetically        
         self.sortByBox.setFixedWidth(140)  
+        self.sortByBox.currentIndexChanged.connect(self.enableSaveButton)
 
         rx = QRegularExpression("\\d{1,2}")
         self.timenormalLine = QLineEdit() 
         self.timenormalLine.setFixedWidth(50) 
         self.timenormalLine.setMaxLength(2)
         self.timenormalLine.setText(str(self.timeNormal))
-        self.timenormalLine.setValidator(QRegularExpressionValidator(rx, self))      
+        self.timenormalLine.setValidator(QRegularExpressionValidator(rx, self)) 
+        self.timenormalLine.textChanged.connect(self.enableSaveButton)     
 
         rx = QRegularExpression("\\d{1,2}")
         self.timedensityLine = QLineEdit() 
@@ -242,7 +252,9 @@ class SettingshWindow(QWidget):
 
         self.addButton = QPushButton('Speichern')
         self.addButton.setFixedWidth(80)
-        self.addButton.clicked.connect(self.saveSettings)     
+        self.addButton.clicked.connect(self.saveSettings) 
+        self.addButton.setShortcut("Return")    
+        self.addButton.setEnabled(False)
 
         layout2.addWidget(self.sortByBox) 
         layout2.addWidget(self.timenormalLine)
@@ -267,12 +279,15 @@ class SettingshWindow(QWidget):
         layout5.addLayout(layout6)
               
 
-        self.setLayout(layout5)        
+        self.setLayout(layout5)  
+
+    def enableSaveButton(self):        
+        self.addButton.setEnabled(True)     
 
     def saveSettings(self):    
                  
         settingsToSave = [self.sortByBox.currentIndex(), self.timenormalLine.text(), self.timedensityLine.text( ), self.timemechanicsLine.text(), self.timereachLine.text()] 
-
+        self.addButton.setEnabled(False)
         self.added.emit(settingsToSave)     
                    
     def closeEvent(self, event):
@@ -283,6 +298,520 @@ class SettingshWindow(QWidget):
         else:
             event.ignore()
 
+class EditDataWindow(QWidget):
+    added = pyqtSignal(object)
+    finished = pyqtSignal()
+
+    def __init__(self, mode, articleList, additiveList, customerList):
+        super().__init__() 
+        self.w = None
+        self.closeMenu = True
+        self.mode = mode
+        self.articleList = articleList
+        self.additiveList = additiveList
+        self.customerList = customerList
+        self.imagePath = os.path.dirname(__file__)
+        match self.mode:
+            case 0:
+                self.setWindowTitle('Kunden-Liste')               
+            case 1:
+                self.setWindowTitle('Artikel-Liste') 
+            case 2:
+                self.setWindowTitle('Additive-Liste')
+        self._createGUI()
+
+    def _createGUI(self):
+        match self.mode:
+            case 0:
+                buttonText = 'Kunden'              
+            case 1:
+                buttonText = 'Artikel'
+            case 2:                
+                buttonText = 'Additive'
+
+
+        self.menubar = QToolBar()              
+
+        self.addItem = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'plus-solid.svg')), buttonText + ' hinzufügen  (Strg + A)', self)        
+        self.addItem.triggered.connect(lambda: self.editEntry(0))  
+        self.addItem.setShortcut("Ctrl+A")
+
+        self.editItem = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'pen-solid.svg')), buttonText + ' ändern  (Strg + E)', self)        
+        self.editItem.triggered.connect(lambda: self.editEntry(1))           
+        self.editItem.setShortcut("Ctrl+E")
+
+        self.menubar.addAction(self.addItem)
+        self.menubar.addAction(self.editItem)
+
+        layout1 = QVBoxLayout()        
+        layout1.setMenuBar(self.menubar)
+
+        menuContent = QWidget()
+        menuContent.setLayout(layout1)
+
+        layout2 = QVBoxLayout()         
+        layout5 = QVBoxLayout() 
+        layout6 = QHBoxLayout()
+        
+        self.listData = QTableWidget()
+        self.listData.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.listData.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.listData.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)   
+        self.listData.doubleClicked.connect(lambda: self.editEntry(1))     
+
+        match self.mode:
+            case 0:                
+                tableHorizontalHeaders = ['Kunde'] 
+                self.listData.verticalHeader().setVisible(False)
+                self.listData.setFixedWidth(200) 
+                self.listData.setFixedHeight(500)  
+                self.listData.setColumnCount(1)
+                self.listData.horizontalHeader().resizeSection(0, 200)
+                self.listData.setHorizontalHeaderLabels(tableHorizontalHeaders)  
+                
+                for key in range(len(self.customerList)): 
+                    self.listData.insertRow(key)            
+                    self.listData.setItem(key, 0, QTableWidgetItem(self.customerList[key]))          
+
+            case 1:                
+                tableHorizontalHeaders = ['Artikel-Nr.', 'Bezeichnung', 'Additive']                
+                self.listData.verticalHeader().setVisible(False)
+                self.listData.setFixedWidth(500) 
+                self.listData.setFixedHeight(500)  
+                self.listData.setColumnCount(3)  
+                self.listData.setHorizontalHeaderLabels(tableHorizontalHeaders)  
+                self.listData.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) 
+                self.listData.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) 
+                self.listData.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents) 
+
+                for key in self.articleList: 
+                     
+                    self.listData.insertRow(key)              
+
+                    self.listData.setItem(key, 0, QTableWidgetItem(self.articleList[key][1]))
+                    self.listData.setItem(key, 1, QTableWidgetItem(self.articleList[key][2])) 
+
+                    additiveString = ''                          
+                    for keys, value in self.articleList[key][3].items(): 
+                        additiveConcentration = ast.literal_eval(value)
+                            
+                        additiveString = additiveString + str(keys) + ': ' + str(additiveConcentration[0]) + '; '
+
+                    self.listData.setItem(key, 2, QTableWidgetItem(additiveString[:-2]))
+                
+            case 2:                
+                tableHorizontalHeaders = ['Additiv-Nr.', 'Hersteller-Bezeichnung', 'Zweck']
+                self.listData.verticalHeader().setVisible(False)
+                self.listData.setFixedWidth(500) 
+                self.listData.setFixedHeight(500)  
+                self.listData.setColumnCount(3)   
+                self.listData.setHorizontalHeaderLabels(tableHorizontalHeaders)
+                self.listData.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents) 
+                self.listData.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents) 
+                self.listData.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents) 
+
+                for key in self.additiveList: 
+                    self.listData.insertRow(key)               
+
+                    self.listData.setItem(key, 0, QTableWidgetItem(self.additiveList[key][0]))
+                    self.listData.setItem(key, 1, QTableWidgetItem(self.additiveList[key][1]))
+                    self.listData.setItem(key, 2, QTableWidgetItem(self.additiveList[key][2]))
+                
+
+        self.closeButton = QPushButton('Schließen')
+        self.closeButton.setFixedWidth(80)
+        self.closeButton.clicked.connect(self.close)  
+
+        self.addButton = QPushButton('Speichern')
+        self.addButton.setFixedWidth(80)
+        self.addButton.clicked.connect(self.sendSaveData) 
+        self.addButton.setShortcut("Return")  
+        self.addButton.setEnabled(False)      
+
+        layout2.addWidget(self.listData)
+
+        layout6.addWidget(self.addButton)
+        layout6.addWidget(self.closeButton)
+        layout6.addStretch()
+
+        layout5.addWidget(menuContent)
+        layout5.addLayout(layout2)
+        layout5.addLayout(layout6)
+              
+
+        self.setLayout(layout5)        
+
+    def saveData(self, changedList):
+        self.changedList = changedList 
+        self.addButton.setEnabled(True) 
+        match self.mode:
+            case 0:  
+                match self.changedList[0]:
+                    case 0:
+                        rowCount = self.listData.rowCount()
+                        self.listData.insertRow(rowCount)
+                        self.listData.setItem(rowCount, 0, QTableWidgetItem(self.changedList[3]))    
+                        self.customerList.append(self.changedList[2]) 
+                    case  1:                         
+                        self.listData.setItem(self.changedList[2], 0, QTableWidgetItem(self.changedList[3]))    
+                        self.customerList[self.changedList[2]] = self.changedList[3]             
+            case 1:
+                match self.changedList[0]:
+                    case 0:
+                        print('add')
+                    case  1:                
+                        self.added.emit(self.articleList)  
+            case 2:                 
+                match self.changedList[0]:                    
+                    case 0:
+                        rowCount = self.listData.rowCount()
+                        self.listData.insertRow(rowCount)
+                        self.listData.setItem(rowCount, 0, QTableWidgetItem(self.changedList[3]))   
+                        self.listData.setItem(rowCount, 1, QTableWidgetItem(self.changedList[4]))
+                        self.listData.setItem(rowCount, 2, QTableWidgetItem(self.changedList[5]))
+
+                        helperList = [self.changedList[3], self.changedList[4], self.changedList[5]]
+
+                        self.additiveList[len(self.additiveList)] = helperList                        
+                    case  1:                         
+                        self.listData.setItem(self.changedList[2], 0, QTableWidgetItem(self.changedList[3]))   
+                        self.listData.setItem(self.changedList[2], 1, QTableWidgetItem(self.changedList[4]))
+                        self.listData.setItem(self.changedList[2], 2, QTableWidgetItem(self.changedList[5])) 
+                        self.additiveList[self.changedList[2]][0] = self.changedList[3] 
+                        self.additiveList[self.changedList[2]][1] = self.changedList[4]
+                        self.additiveList[self.changedList[2]][2] = self.changedList[5]                        
+
+    def sendSaveData(self):
+        match self.mode:
+            case 0:                                           
+                self.added.emit(self.changedList) 
+            case 1:
+                self.added.emit(self.changedList)  
+            case 2:
+                self.added.emit(self.changedList)
+
+    def editEntry(self, addORedit): 
+        
+        self.editData = []
+        match addORedit:
+            case 0:
+                match self.mode:
+                        case 0:
+                            self.editData = [addORedit, self.mode, '', '']
+                            self.openSecondaryWindow()
+                        
+                        case 1:
+                            self.editData = [addORedit, self.mode, '', '', '', '']
+                        
+                        case 2:
+                            self.editData = [addORedit, self.mode, '', '', '', '']
+                            self.openSecondaryWindow()
+
+            case 1:
+                if len(self.listData.selectionModel().selectedRows()) != 0:    
+                    
+                    match self.mode:
+                        case 0: 
+                            self.editData = [addORedit, self.mode, self.listData.selectionModel().selectedRows()[0].row(), self.customerList[self.listData.selectionModel().selectedRows()[0].row()]]   
+                            self.openSecondaryWindow()        
+                            
+                        case 1:
+                            self.editData = [addORedit,self.mode, self.listData.selectionModel().selectedRows()[0].row(), self.articleList[self.listData.selectionModel().selectedRows()[0].row()][1], self.articleList[self.listData.selectionModel().selectedRows()[0].row()][2], self.articleList[self.listData.selectionModel().selectedRows()[0].row()][3], self.additiveList] 
+                            self.openSecondaryWindow()   
+                        case 2:
+                            self.editData = [addORedit, self.mode, self.listData.selectionModel().selectedRows()[0].row(), self.additiveList[self.listData.selectionModel().selectedRows()[0].row()][0], self.additiveList[self.listData.selectionModel().selectedRows()[0].row()][1], self.additiveList[self.listData.selectionModel().selectedRows()[0].row()][2]]                  
+                            self.openSecondaryWindow()   
+
+    def openSecondaryWindow(self):
+        
+        self.listData.setDisabled(True)
+        self.addItem.setDisabled(True)        
+        self.editItem.setDisabled(True)        
+        self.closeButton.setDisabled(True)        
+        self.menubar.setDisabled(True)
+
+
+        self.closeMenu = False
+
+        if self.w is None:            
+                      
+            self.w = EditDataItemWindow(self.editData)         
+            self.w.show()
+            self.w.finished.connect(self.closeSecondaryWindow)            
+            self.w.edited.connect(self.saveData)                
+
+        else:
+            self.w.close()
+            self.w = None  
+
+    def closeSecondaryWindow(self):
+        self.w = None 
+        self.listData.setDisabled(False)
+        self.addItem.setDisabled(False)        
+        self.editItem.setDisabled(False) 
+        self.closeButton.setDisabled(False)
+        self.menubar.setDisabled(False)
+        
+        self.closeMenu = True 
+                   
+    def closeEvent(self, event):
+        
+        if self.closeMenu == True:
+            event.accept()
+            self.finished.emit()
+        else:
+            event.ignore()
+
+class EditDataItemWindow(QWidget):
+    edited = pyqtSignal(list)
+    finished = pyqtSignal()
+
+    def __init__(self, editData):
+        super().__init__()   
+
+        self.closeMenu = True        
+        self.editData = editData 
+        self.addORedit = self.editData[0]
+        self.mode = self.editData[1]  
+
+        match self.addORedit:
+            case 0:            
+                self.setWindowTitle('Hinzufügen')
+            case 1:
+                self.setWindowTitle('Bearbeiten')
+
+        self._createGUI()
+
+    def _createGUI(self):
+
+        layout1 = QVBoxLayout()
+        layout2 = QVBoxLayout()
+        layout3 = QHBoxLayout()
+        layout4 = QHBoxLayout()
+        layout5 = QVBoxLayout()
+
+        
+        match self.mode:
+                case 0:                 
+                    
+                    self.customerName = QLineEdit()
+                    self.customerName.setFixedWidth(200)
+                    match self.addORedit:
+                        case 0:
+                            self.customerName.setText('')
+                        case 1:
+                            self.customerName.setText(self.editData[3])
+
+                    layout1.addWidget(self.customerName)
+
+                    self.labelCustomer = QLabel('Kunde')
+
+                    layout2.addWidget(self.labelCustomer)
+
+                    layout3.addLayout(layout2)
+                    layout3.addLayout(layout1)
+                                     
+   
+                case 1:                   
+
+                    rx = QRegularExpression("32.\\d{1,4}")
+                    self.articleNo = QLineEdit()
+                    self.articleNo.setFixedWidth(200)
+                    self.articleNo.setValidator(QRegularExpressionValidator(rx, self)) 
+                    match self.addORedit:
+                        case 0:
+                            self.articleNo.setText('')
+                        case 1:
+                            self.articleNo.setText(self.editData[3])
+
+                    self.articleName = QLineEdit()
+                    self.articleName.setFixedWidth(200)
+                    match self.addORedit:
+                        case 0:
+                            self.articleName.setText('')
+                        case 1:
+                            self.articleName.setText(self.editData[4])
+                    self.attr1 = []
+                    for additive in self.editData[6]:
+                        self.attr1.append(self.editData[6][additive][1])
+
+
+                    self.tableAdditives = QTableWidget()   
+                    tableHorizontalHeaders = ['Aktiv', 'Additiv', 'Konzentration']                
+                    self.tableAdditives.verticalHeader().setVisible(False)
+                    self.tableAdditives.setFixedWidth(600) 
+                    self.tableAdditives.setFixedHeight(500)  
+                    self.tableAdditives.setColumnCount(3)  
+                    self.tableAdditives.setHorizontalHeaderLabels(tableHorizontalHeaders)  
+                    self.tableAdditives.horizontalHeader().resizeSection(0, 38)     
+                    self.tableAdditives.horizontalHeader().resizeSection(1, 150)  
+                    self.tableAdditives.horizontalHeader().resizeSection(2, 150)
+
+                    for row in range(10): 
+                        self.tableAdditives.insertRow(row)             
+
+                        self.activateAdditive = QCheckBox()                        
+                        self.tableAdditives.setCellWidget(row, 0, self.activateAdditive)                
+
+                        self.articleAdditives = QComboBox()     
+                        self.articleAdditives.addItem('')            
+                        self.articleAdditives.addItems(self.attr1)        
+                        self.articleAdditives.setEditable(True) 
+                        self.articleAdditives.InsertPolicy.InsertAlphabetically        
+                        self.articleAdditives.setFixedWidth(150) 
+
+                        self.tableAdditives.setCellWidget(row, 1, self.articleAdditives)
+
+                        rx = QRegularExpression("\d{1,2}\.\d{1,2}")
+                        self.concentrationAdditive = QLineEdit()  
+                        self.concentrationAdditive.setValidator(QRegularExpressionValidator(rx, self))  
+
+                        self.tableAdditives.setCellWidget(row, 2, self.concentrationAdditive)   
+
+                    keyNumber = 0
+                    for keys, value in self.editData[5].items():                     
+                           
+                        match self.addORedit:
+                            case 1:
+                                additiveConcentration = ast.literal_eval(value)                                        
+                                self.tableAdditives.cellWidget(keyNumber, 0).setChecked(additiveConcentration[1])
+                                self.tableAdditives.cellWidget(keyNumber, 1).setCurrentText(keys)
+                                self.tableAdditives.cellWidget(keyNumber, 2).setText(str(additiveConcentration[0]))                         
+                        
+              
+                        keyNumber = keyNumber + 1
+
+                                
+
+                    layout1.addWidget(self.articleNo)
+                    layout1.addWidget(self.articleName)
+                    layout1.addWidget(self.tableAdditives)
+
+                    self.labelArticleNo = QLabel('Artikel-Nr.')
+                    self.labelArticleName = QLabel('Bezeichnung')
+                    self.labelArticleAdditives = QLabel('Additive')                    
+
+                    layout2.addWidget(self.labelArticleNo)
+                    layout2.addWidget(self.labelArticleName)
+                    layout2.addWidget(self.labelArticleAdditives)
+                    layout2.addStretch()
+
+                    layout3.addLayout(layout2)
+                    layout3.addLayout(layout1)
+
+                case 2:
+                    rx = QRegularExpression("\d{1,2}\.\d{1,4}")
+                    self.additiveNo = QLineEdit()
+                    self.additiveNo.setFixedWidth(200)
+                    self.additiveNo.setValidator(QRegularExpressionValidator(rx, self)) 
+                    match self.addORedit:
+                        case 0:
+                            self.additiveNo.setText('')
+                        case 1:
+                            self.additiveNo.setText(self.editData[3])
+
+                    self.additiveName = QLineEdit()
+                    self.additiveName.setFixedWidth(200)
+                    match self.addORedit:
+                        case 0:
+                            self.additiveName.setText('')
+                        case 1:
+                            self.additiveName.setText(self.editData[4])
+
+                    self.additiveDesig = QLineEdit()
+                    self.additiveDesig.setFixedWidth(200)
+                    match self.addORedit:
+                        case 0:
+                            self.additiveDesig.setText('')
+                        case 1:
+                            self.additiveDesig.setText(self.editData[5])
+
+                    layout1.addWidget(self.additiveNo)
+                    layout1.addWidget(self.additiveName)
+                    layout1.addWidget(self.additiveDesig)
+
+                    self.labelAdditiveNo = QLabel('Additive-Nr.')
+                    self.labelAdditiveName = QLabel('Handelsname')
+                    self.labelAdditiveDesig = QLabel('Bezeichnung')
+
+                    layout2.addWidget(self.labelAdditiveNo)
+                    layout2.addWidget(self.labelAdditiveName)
+                    layout2.addWidget(self.labelAdditiveDesig)
+
+                    layout3.addLayout(layout2)
+                    layout3.addLayout(layout1)
+
+        self.closeButton = QPushButton('Schließen')
+        self.closeButton.setFixedWidth(80)
+        self.closeButton.clicked.connect(self.close)              
+
+        match self.addORedit:
+            case 0:
+                self.addButton = QPushButton('Hinzufügen')
+                        
+            case 1:
+                self.addButton = QPushButton('Speichern')
+        self.addButton.setFixedWidth(80)
+        self.addButton.clicked.connect(self.saveEditData) 
+        self.addButton.setShortcut("Return") 
+
+        layout4.addWidget(self.addButton)
+        layout4.addWidget(self.closeButton)
+        layout4.addStretch()
+
+        layout5.addLayout(layout3)
+        layout5.addLayout(layout4)
+
+        
+        self.setLayout(layout5)
+
+    def saveEditData(self):
+        match self.mode:
+                case 0:                     
+                    match self.addORedit:
+                        case 0:
+                            self.editData[3] = self.customerName.text()                   
+                        case 1:
+                            self.editData[3] = self.customerName.text()
+                    
+                    if self.editData[3] != '': 
+                        print(self.editData)       
+                        self.edited.emit(self.editData)
+                        self.close()        
+                case 1:
+                    match self.addORedit:
+                        case 0:
+                            print('addArtikel')
+                        case 1:
+                            print('editArtikel')
+                            
+                    self.edited.emit(self.editData)
+                    self.close()
+
+                case 2:
+                    match self.addORedit:
+                        case 0:
+                            self.editData[3] = self.additiveNo.text()
+                            self.editData[4] = self.additiveName.text()
+                            self.editData[5] = self.additiveDesig.text()
+                            
+                        case 1:
+                            self.editData[3] = self.additiveNo.text()
+                            self.editData[4] = self.additiveName.text()
+                            self.editData[5] = self.additiveDesig.text()
+                    if self.editData[3] != '' and self.editData[4] != '' and self.editData[5] != '':        
+                        self.edited.emit(self.editData)
+                        self.close()
+
+    def closeEvent(self, event):
+        
+        if self.closeMenu == True:
+            event.accept()
+            self.finished.emit()
+        else:
+            event.ignore()
+
+
 class MainWindow(QMainWindow):           
 
     def __init__(self):
@@ -290,7 +819,8 @@ class MainWindow(QMainWindow):
         self.w = None
         self.closeMenu = True  
         self.workingOnShiftPlan = False
-        self.setLoadedFile = False      
+        self.setLoadedFile = False    
+        self.dataXLSX = os.path.join(os.path.dirname(__file__), 'data', 'data.xlsx')  
         self.imagePath = os.path.dirname(__file__)
 
         self.config = configparser.ConfigParser()
@@ -310,19 +840,8 @@ class MainWindow(QMainWindow):
             case 1:
                 self.sortByColumn = 3
             case 2:
-                self.sortByColumn = 10
-
+                self.sortByColumn = 10     
         
-        
-
-        with open(os.path.join(self.imagePath, 'data', 'customers.txt'), 'r', -1, 'utf-8') as file:
-            self.attr1 = [line.rstrip() for line in file]
-
-        with open(os.path.join(self.imagePath, 'data', 'articles.txt'), 'r', -1, 'utf-8') as file:
-            self.attr2 = [line.rstrip() for line in file]  
-
-        self.attr1.sort()  
-        self.attr2.sort()   
 
         self.attrShift = ['F-S','S-N','N-F','N-W-S', 'W-S-N', 'F', 'S', 'N']
         self.attrPack = ['Bigbag','Oktabin','Silo','Homogenisierung']
@@ -336,7 +855,8 @@ class MainWindow(QMainWindow):
         self._createPlanerViewExtruder2()  
         self._createPlanerViewHomogenisation()     
         self._createPlanerViewSilo() 
-        self._createMaster()    
+        self._createMaster()   
+        self._loadData() 
         
     def _createMenu(self):
         self.menubar = self.addToolBar('Menü')              
@@ -348,13 +868,15 @@ class MainWindow(QMainWindow):
         self.saveFile = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'floppy-disk-solid.svg')), 'Speichern  (Strg + S)', self)        
         self.saveFile.triggered.connect(self.performSaveFile)
         self.saveFile.setShortcut("Ctrl+S")
+        self.saveFile.setDisabled(True)
 
         self.saveFileAs = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'file-solid.svg')), 'Speichern unter...  (Strg + Shift + S)', self)        
         self.saveFileAs.triggered.connect(self.performSaveFileAs)
         self.saveFileAs.setShortcut("Ctrl+Shift+S")
+        self.saveFileAs.setDisabled(True)
 
         self.addBatch = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'plus-solid.svg')), 'Charge hinzufügen  (Strg + A)', self)        
-        self.addBatch.triggered.connect(self.performAddBatch)
+        self.addBatch.triggered.connect(lambda: self.openSecondaryWindow(0))
         self.addBatch.setShortcut("Ctrl+A") 
 
         self.generateSiloListsButton = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'arrows-rotate-solid.svg')), 'Silo-Listen erstellen  (Strg + G)', self)        
@@ -365,8 +887,20 @@ class MainWindow(QMainWindow):
         #self.printPlans.triggered.connect(self.performPrintPlans)
         self.printPlans.setShortcut("Ctrl+P")     
 
+        self.changeCustomers = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'truck-moving-solid.svg')), 'Kunden ansehen/ändern/hinzufügen (Strg + T)', self)        
+        self.changeCustomers.triggered.connect(lambda: self.openSecondaryWindow(2))
+        self.changeCustomers.setShortcut("Ctrl+T")
+        
+        self.changeArticles = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'tags-solid.svg')), 'Artikel ansehen/ändern/hinzufügen (Strg + F)', self)        
+        self.changeArticles.triggered.connect(lambda: self.openSecondaryWindow(3))
+        self.changeArticles.setShortcut("Ctrl+F")
+
+        self.changeAdditives = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'flask-vial-solid.svg')), 'Additive ansehen/ändern/hinzufügen (Strg + R)', self)        
+        self.changeAdditives.triggered.connect(lambda: self.openSecondaryWindow(4))
+        self.changeAdditives.setShortcut("Ctrl+R")
+        
         self.changeSettings = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'gear-solid.svg')), 'Einstellungen (Strg + E)', self)        
-        self.changeSettings.triggered.connect(self.displaySettings)
+        self.changeSettings.triggered.connect(lambda: self.openSecondaryWindow(1))
         self.changeSettings.setShortcut("Ctrl+E") 
 
         self.menubar.addAction(self.openFileDialog)
@@ -377,6 +911,10 @@ class MainWindow(QMainWindow):
         self.menubar.addAction(self.generateSiloListsButton)
         self.menubar.addSeparator()
         self.menubar.addAction(self.printPlans) 
+        self.menubar.addSeparator()
+        self.menubar.addAction(self.changeCustomers)
+        self.menubar.addAction(self.changeArticles)
+        self.menubar.addAction(self.changeAdditives)
         self.menubar.addAction(self.changeSettings)
 
     def _createTabs(self):
@@ -689,8 +1227,128 @@ class MainWindow(QMainWindow):
         masterWidget.setLayout(self.tabLayout)       
 
         self.setCentralWidget(masterWidget)          
-           
-    def performAddBatch(self):
+
+    def _loadData(self):      
+
+        self.articleNoList = [] 
+        self.customerList = []              
+
+        wb = load_workbook(filename=self.dataXLSX)
+        sheets = wb.sheetnames
+
+        sheetsNo = 3
+
+        articleListHelp = {}
+        additiveListHelp = {}        
+
+        for sheet in range(sheetsNo):
+            ws = wb[sheets[sheet]]   
+            match sheet:
+                    case 0: 
+                        rowItem = 0                              
+                        for row in ws.iter_rows(values_only=True):         
+
+                            articleListHelp[rowItem] = [row[0], row[1], row[2], ast.literal_eval(row[3])]
+                            rowItem = rowItem + 1
+
+                        
+                        self.articleList = dict(sorted(articleListHelp.items(), key=lambda item: item[1][1]))                                          
+
+
+                    case 1:
+                        rowItem = 0       
+                        for row in ws.iter_rows(values_only=True):         
+
+                            additiveListHelp[rowItem] = [row[0], row[1], row[2]]
+                            rowItem = rowItem + 1
+
+                        self.additiveList = dict(sorted(additiveListHelp.items(), key=lambda item: item[1][0]))
+                    
+                    case 2:                             
+                        for row in ws.iter_rows(values_only=True):         
+
+                            self.customerList.append(row[0])                            
+
+                        self.customerList.sort()
+
+
+        for key in self.articleList:             
+            self.articleNoList.append(self.articleList[key][1])   
+
+        #self.saveData()         
+                     
+    def saveData(self, changedList):
+        
+        mode = changedList[1] 
+        
+        tableList = [self.tableBatchesExtruder1, self.tableBatchesExtruder2, self.tableBatchesSilo, self.tableBatchesHomogenisation ] 
+   
+        match mode:
+            case 0:                                                
+                for table in range(len(tableList)):
+                    whichTable = tableList[table]                                     
+
+                    if whichTable.rowCount() != 0:                                              
+                            
+                        for row in range(whichTable.rowCount()):  
+                            oldItemCount = whichTable.cellWidget(row, 7).count() - 1                                 
+                            for listItem in range(len(self.customerList)): 
+                                if listItem+1 > oldItemCount:
+                                    whichTable.cellWidget(row, 7).addItem(self.customerList[listItem])                                
+                                else:
+                                    whichTable.cellWidget(row, 7).setItemText(listItem+1, self.customerList[listItem])
+
+                            
+            case 1:
+                print('Artikel')
+            
+
+
+        wb = Workbook() 
+
+        ws = wb.active  
+        ws.title = 'Artikel'
+        wb.create_sheet('Additive')
+        wb.create_sheet('Kunden')
+
+        sheets = wb.sheetnames
+
+        sheetsNo = 3
+        
+
+        for sheet in range(sheetsNo):
+            saveTableData = []
+            saveRow = []
+
+            ws = wb[sheets[sheet]]
+            match sheet:
+                case 0:                     
+                    for key in self.articleList:        
+                        saveRow = [self.articleList[key][0], self.articleList[key][1], self.articleList[key][2], ';'.join(str(x) for x in self.articleList[key][3]), ';'.join(str(x) for x in self.articleList[key][4])]  
+                        saveTableData.append(saveRow) 
+                         
+                    for writeRow in saveTableData:
+                        ws.append(writeRow)           
+                                
+                case 1:           
+                    for key in self.additiveList:             
+                        saveRow = [self.additiveList[key][0], self.additiveList[key][1], self.additiveList[key][2]]  
+                        saveTableData.append(saveRow)                     
+                         
+                    for writeRow in saveTableData:
+                        ws.append(writeRow) 
+                case 2:                     
+                    for writeRow in self.customerList:
+                        saveRow = [writeRow]   
+                        saveTableData.append(saveRow) 
+
+                    for writeRow in saveTableData:
+                        ws.append(writeRow)
+                                       
+         
+        wb.save(self.dataXLSX) 
+                
+    def openSecondaryWindow(self, window):
         
         self.tableBatchesExtruder1.setDisabled(True)
         self.tableBatchesExtruder2.setDisabled(True)        
@@ -708,42 +1366,39 @@ class MainWindow(QMainWindow):
 
         self.closeMenu = False
 
-        if self.w is None:            
-            self.w = AddBatchWindow(self.attr1, self.attr2, self.attrPack, self.attrLab)         
-            self.w.show()
-            self.w.finished.connect(self.closeSecondaryWindow)
-            self.w.added.connect(self.addBatchesToList)
+        if self.w is None:  
+            match window:
+                case 0:          
+                    self.w = AddBatchWindow(self.customerList, self.articleNoList, self.attrPack, self.attrLab, self.timeNormal, self.timeDensity, self.timeMechanics, self.timeReach)         
+                    self.w.show()
+                    self.w.finished.connect(self.closeSecondaryWindow)
+                    self.w.added.connect(self.addBatchesToList)
+                case 1:
+                    self.w = SettingsWindow(self.sortBy, self.timeNormal, self.timeDensity, self.timeMechanics, self.timeReach)         
+                    self.w.show()
+                    self.w.finished.connect(self.closeSecondaryWindow)
+                    self.w.added.connect(self.writeSettingsToIni)
+                case 2:                    
+                    self.w = EditDataWindow(0, self.articleList, self.additiveList, self.customerList)         
+                    self.w.show()
+                    self.w.finished.connect(self.closeSecondaryWindow)
+                    self.w.added.connect(self.saveData)
+
+                case 3:
+                    self.w = EditDataWindow(1, self.articleList, self.additiveList, self.customerList)         
+                    self.w.show()
+                    self.w.finished.connect(self.closeSecondaryWindow)
+                    self.w.added.connect(self.saveData)
+
+                case 4:  
+                    self.w = EditDataWindow(2, self.articleList, self.additiveList, self.customerList)         
+                    self.w.show()
+                    self.w.finished.connect(self.closeSecondaryWindow)
+                    self.w.added.connect(self.saveData) 
 
         else:
             self.w.close()
             self.w = None  
-
-    def displaySettings(self):
-        
-        self.tableBatchesExtruder1.setDisabled(True)
-        self.tableBatchesExtruder2.setDisabled(True)        
-        self.moveToExtruder2.setDisabled(True)
-        self.moveToExtruder1.setDisabled(True) 
-        self.sortExtruder1byDeliveryDateButton.setDisabled(True)
-        self.deleteBatchExtruder1.setDisabled(True)  
-        self.moveRowUp1.setDisabled(True)
-        self.sortExtruder2byDeliveryDateButton.setDisabled(True)
-        self.deleteBatchExtruder2.setDisabled(True)  
-        self.moveRowUp2.setDisabled(True)
-        self.tabs.setDisabled(True)
-        self.menubar.setDisabled(True)
-
-        self.closeMenu = False
-
-        if self.w is None:            
-            self.w = SettingshWindow(self.sortBy, self.timeNormal, self.timeDensity, self.timeMechanics, self.timeReach)         
-            self.w.show()
-            self.w.finished.connect(self.closeSecondaryWindow)
-            self.w.added.connect(self.writeSettingsToIni)
-
-        else:
-            self.w.close()
-            self.w = None 
 
     def closeSecondaryWindow(self):
         self.w = None 
@@ -765,6 +1420,9 @@ class MainWindow(QMainWindow):
     def addBatchesToList(self, addBatchArray): 
         self.tableBatchesExtruder1.blockSignals(True)
         self.tableBatchesExtruder2.blockSignals(True)
+        
+        self.saveFile.setEnabled(True)
+        self.saveFileAs.setEnabled(True)
 
         deliveryDate = datetime.datetime.strptime(addBatchArray[10], '%d.%m.%Y')
         
@@ -831,11 +1489,12 @@ class MainWindow(QMainWindow):
                 case 4:                                                    
                     whichArticle = QComboBox()
                     whichArticle.addItem('32.')
-                    whichArticle.addItems(self.attr2)                    
-                    whichArticle.setCurrentIndex(addBatchArray[4])
+                    whichArticle.addItems(self.articleNoList)                    
+                    whichArticle.setCurrentText(addBatchArray[4])
                     whichArticle.setEditable(True) 
-                    whichArticle.setValidator(QRegularExpressionValidator(rx2, self))                    
-                    #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
+                    whichArticle.setValidator(QRegularExpressionValidator(rx2, self))   
+                    #whichArticle.setItemIcon(addBatchArray[4], QIcon(QIcon(os.path.join(self.imagePath, 'assets', 'folder-open-solid.svg'))))                 
+                    #whichPackaging.currentIndexChanged.connect(lambda: self.articleChanged(1))
                     self.tableBatchesExtruder1.setCellWidget(rowPosition, item, whichArticle)  
 
                 case 5:                                         
@@ -857,8 +1516,8 @@ class MainWindow(QMainWindow):
                 case 7:                                
                     whichCustomer = QComboBox()
                     whichCustomer.addItem(' ')
-                    whichCustomer.addItems(self.attr1)
-                    whichCustomer.setCurrentIndex(addBatchArray[7])
+                    whichCustomer.addItems(self.customerList)
+                    whichCustomer.setCurrentText(addBatchArray[7])
                     whichCustomer.setEditable(True)
                     #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
                     self.tableBatchesExtruder1.setCellWidget(rowPosition, item, whichCustomer)   
@@ -971,7 +1630,10 @@ class MainWindow(QMainWindow):
 
     def moveBatchToExtruder(self, table):
         self.tableBatchesExtruder1.blockSignals(True)
-        self.tableBatchesExtruder2.blockSignals(True)       
+        self.tableBatchesExtruder2.blockSignals(True)  
+        
+        self.saveFile.setEnabled(True)
+        self.saveFileAs.setEnabled(True)     
 
         if table == 1:            
             whichTable = self.tableBatchesExtruder1
@@ -1005,7 +1667,7 @@ class MainWindow(QMainWindow):
                         case 0:                    
                             whichCalendarWeek = QLineEdit()
                             whichCalendarWeek.setText(whichTable.cellWidget(item, rowItem).text())
-                            whichCalendarWeek.setEnabled(0)
+                            whichCalendarWeek.setEnabled(False)
                             whichCalendarWeek.setFixedWidth(40)
                             otherTable.setCellWidget(rowPosition, rowItem, whichCalendarWeek)
 
@@ -1045,7 +1707,7 @@ class MainWindow(QMainWindow):
                         case 4:                                
                             whichArticle = QComboBox()
                             whichArticle.addItem('32.')
-                            whichArticle.addItems(self.attr2)
+                            whichArticle.addItems(self.articleNoList)
                             whichArticle.setValidator(QRegularExpressionValidator(rx2, self))
                             whichArticle.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
                             whichArticle.setEditable(True)
@@ -1074,7 +1736,7 @@ class MainWindow(QMainWindow):
                         case 7:                                
                             whichCustomer = QComboBox()
                             whichCustomer.addItem(' ')
-                            whichCustomer.addItems(self.attr1)                                
+                            whichCustomer.addItems(self.customerList)                                
                             whichCustomer.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
                             whichCustomer.setEditable(True)
                             #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
@@ -1152,12 +1814,20 @@ class MainWindow(QMainWindow):
     def deleteBatchFromListExtruder(self, table):
         self.tableBatchesExtruder1.blockSignals(True)
         self.tableBatchesExtruder2.blockSignals(True)
-        if self.workingOnShiftPlan == False:
+        
+        self.saveFile.setEnabled(True)
+        self.saveFileAs.setEnabled(True)
 
-            if table == 1:            
-                whichTable = self.tableBatchesExtruder1            
-            else:           
-                whichTable = self.tableBatchesExtruder2
+        if self.workingOnShiftPlan == False:
+            match table:
+                case 1:            
+                    whichTable = self.tableBatchesExtruder1            
+                case 2:           
+                    whichTable = self.tableBatchesExtruder2
+                case 3:
+                    whichTable = self.tableBatchesHomogenisation
+                case 4:
+                    whichTable = self.tableBatchesSilo
                 
 
             if len(whichTable.selectionModel().selectedRows()) != 0:            
@@ -1183,15 +1853,25 @@ class MainWindow(QMainWindow):
     
     def productionStartDateChangedInTable(self, table):
         if self.workingOnShiftPlan == False:
+            
+            self.saveFile.setEnabled(True)
+            self.saveFileAs.setEnabled(True)
             self.tableBatchesExtruder1.blockSignals(True)
             self.tableBatchesExtruder2.blockSignals(True)
-            changedDate = self.sender()
+            self.tableBatchesHomogenisation.blockSignals(True)
+            self.tableBatchesSilo.blockSignals(True)
+            changedDate = self.sender()            
             row = changedDate.property('row')                
 
-            if table == 1:            
-                whichTable = self.tableBatchesExtruder1            
-            else:           
-                whichTable = self.tableBatchesExtruder2     
+            match table:
+                case 1:            
+                    whichTable = self.tableBatchesExtruder1            
+                case 2:           
+                    whichTable = self.tableBatchesExtruder2
+                case 3:
+                    whichTable = self.tableBatchesHomogenisation
+                case 4:
+                    whichTable = self.tableBatchesSilo   
 
 
             whichShift = whichTable.cellWidget(row, 1).currentText()
@@ -1205,7 +1885,7 @@ class MainWindow(QMainWindow):
             whichTable.cellWidget(row, 0).setText(newKW)
 
             newTimeToDelivery = (datetime.datetime.strptime(whichTable.cellWidget(row, 10).date().toString('dd.MM.yyyy'), '%d.%m.%Y') - datetime.datetime.strptime(whichTable.cellWidget(row, 3).date().toString('dd.MM.yyyy'), '%d.%m.%Y')).days
-            whichTable.cellWidget(row, 12).setText(str(newTimeToDelivery))
+            whichTable.cellWidget(row, 12).setText(str(newTimeToDelivery))            
 
             if whichTable.cellWidget(row, 9).currentIndex() == 1 and newTimeToDelivery < self.timeDensity:            
                 whichTable.cellWidget(row, 12).setStyleSheet('background-color: red')
@@ -1225,19 +1905,29 @@ class MainWindow(QMainWindow):
             
             self.tableBatchesExtruder1.blockSignals(False)
             self.tableBatchesExtruder2.blockSignals(False) 
+            self.tableBatchesHomogenisation.blockSignals(False)
+            self.tableBatchesSilo.blockSignals(False)
 
     def productionEndDateChangedInTable(self, table):
         if self.workingOnShiftPlan == False:
+            
+            self.saveFile.setEnabled(True)
+            self.saveFileAs.setEnabled(True)
             self.tableBatchesExtruder1.blockSignals(True)
             self.tableBatchesExtruder2.blockSignals(True)
             changedDate = self.sender()
             row = changedDate.property('row')
             newKW = datetime.datetime.strptime(changedDate.date().toString('dd.MM.yyyy'), '%d.%m.%Y').strftime('%V')       
 
-            if table == 1:            
-                whichTable = self.tableBatchesExtruder1            
-            else:           
-                whichTable = self.tableBatchesExtruder2
+            match table:
+                case 1:            
+                    whichTable = self.tableBatchesExtruder1            
+                case 2:           
+                    whichTable = self.tableBatchesExtruder2
+                case 3:
+                    whichTable = self.tableBatchesHomogenisation
+                case 4:
+                    whichTable = self.tableBatchesSilo
             
             newTimeToDelivery = (datetime.datetime.strptime(whichTable.cellWidget(row, 10).date().toString('dd.MM.yyyy'), '%d.%m.%Y') - datetime.datetime.strptime(changedDate.date().toString('dd.MM.yyyy'), '%d.%m.%Y')).days
 
@@ -1274,14 +1964,22 @@ class MainWindow(QMainWindow):
     def deliveryDateChangedInTable(self, table):
         self.tableBatchesExtruder1.blockSignals(True)
         self.tableBatchesExtruder2.blockSignals(True)   
-        if self.workingOnShiftPlan == False:     
+        if self.workingOnShiftPlan == False:  
+            
+            self.saveFile.setEnabled(True)
+            self.saveFileAs.setEnabled(True)   
             changedDate = self.sender()
             row = changedDate.property('row')                   
 
-            if table == 1:            
-                whichTable = self.tableBatchesExtruder1            
-            else:           
-                whichTable = self.tableBatchesExtruder2
+            match table:
+                case 1:            
+                    whichTable = self.tableBatchesExtruder1            
+                case 2:           
+                    whichTable = self.tableBatchesExtruder2
+                case 3:
+                    whichTable = self.tableBatchesHomogenisation
+                case 4:
+                    whichTable = self.tableBatchesSilo
             
             newTimeToDelivery = (datetime.datetime.strptime(changedDate.date().toString('dd.MM.yyyy'), '%d.%m.%Y') - datetime.datetime.strptime(whichTable.cellWidget(row, 3).date().toString('dd.MM.yyyy'), '%d.%m.%Y')).days
 
@@ -1303,15 +2001,23 @@ class MainWindow(QMainWindow):
 
     def shiftChanged(self, table): 
         if self.workingOnShiftPlan == False: 
+            
+            self.saveFile.setEnabled(True)
+            self.saveFileAs.setEnabled(True)
             self.tableBatchesExtruder1.blockSignals(True)
             self.tableBatchesExtruder2.blockSignals(True) 
             row = self.sender().property('row')             
             whichShift = self.sender().currentText()  
 
-            if table == 1:            
-                whichTable = self.tableBatchesExtruder1            
-            else:           
-                whichTable = self.tableBatchesExtruder2 
+            match table:
+                case 1:            
+                    whichTable = self.tableBatchesExtruder1            
+                case 2:           
+                    whichTable = self.tableBatchesExtruder2
+                case 3:
+                    whichTable = self.tableBatchesHomogenisation
+                case 4:
+                    whichTable = self.tableBatchesSilo 
 
             newTimeToDelivery = int(whichTable.cellWidget(row, 12).text())        
 
@@ -1348,15 +2054,24 @@ class MainWindow(QMainWindow):
     def labChanged(self, table):            
         self.tableBatchesExtruder1.blockSignals(True)
         self.tableBatchesExtruder2.blockSignals(True)
+        
+        self.saveFile.setEnabled(True)
+        self.saveFileAs.setEnabled(True)
+
         if self.workingOnShiftPlan == False:
 
             whichLab = self.sender().currentIndex()
             row = self.sender().property('row')        
 
-            if table == 1:            
-                whichTable = self.tableBatchesExtruder1            
-            else:           
-                whichTable = self.tableBatchesExtruder2
+            match table:
+                case 1:            
+                    whichTable = self.tableBatchesExtruder1            
+                case 2:           
+                    whichTable = self.tableBatchesExtruder2
+                case 3:
+                    whichTable = self.tableBatchesHomogenisation
+                case 4:
+                    whichTable = self.tableBatchesSilo
 
             if whichLab == 0:     
                 whichTable.cellWidget(row, 3).setDate(datetime.datetime.strptime(whichTable.cellWidget(row, 10).text(), '%d.%m.%Y') - datetime.timedelta(days=self.timeNormal))         
@@ -1397,11 +2112,20 @@ class MainWindow(QMainWindow):
         self.tableBatchesExtruder2.blockSignals(False) 
 
     def sortExtruderbyDeliveryDateButton(self, table):
+        
+        self.saveFile.setEnabled(True)
+        self.saveFileAs.setEnabled(True)
+
         self.workingOnShiftPlan = True
-        if table == 1:            
-            whichTable = self.tableBatchesExtruder1
-        else:           
-            whichTable = self.tableBatchesExtruder2
+        match table:
+                case 1:            
+                    whichTable = self.tableBatchesExtruder1            
+                case 2:           
+                    whichTable = self.tableBatchesExtruder2
+                case 3:
+                    whichTable = self.tableBatchesHomogenisation
+                case 4:
+                    whichTable = self.tableBatchesSilo
         
 
         saveTableDataHelp = {}
@@ -1503,10 +2227,19 @@ class MainWindow(QMainWindow):
 
     def moveBatchRowUp(self, table):
         self.workingOnShiftPlan = True
-        if table == 1:            
-            whichTable = self.tableBatchesExtruder1
-        else:           
-            whichTable = self.tableBatchesExtruder2
+        
+        self.saveFile.setEnabled(True)
+        self.saveFileAs.setEnabled(True)
+
+        match table:
+            case 1:            
+                whichTable = self.tableBatchesExtruder1            
+            case 2:           
+                whichTable = self.tableBatchesExtruder2
+            case 3:
+                whichTable = self.tableBatchesHomogenisation
+            case 4:
+                whichTable = self.tableBatchesSilo
 
         if len(whichTable.selectionModel().selectedRows()) != 0:            
 
@@ -1611,10 +2344,19 @@ class MainWindow(QMainWindow):
 
     def moveBatchRowDown(self, table):
         self.workingOnShiftPlan = True
-        if table == 1:            
-            whichTable = self.tableBatchesExtruder1
-        else:           
-            whichTable = self.tableBatchesExtruder2
+
+        self.saveFile.setEnabled(True)
+        self.saveFileAs.setEnabled(True)
+
+        match table:
+            case 1:            
+                whichTable = self.tableBatchesExtruder1            
+            case 2:           
+                whichTable = self.tableBatchesExtruder2
+            case 3:
+                whichTable = self.tableBatchesHomogenisation
+            case 4:
+                whichTable = self.tableBatchesSilo
 
         if len(whichTable.selectionModel().selectedRows()) != 0:            
 
@@ -1723,84 +2465,132 @@ class MainWindow(QMainWindow):
     def createShiftPlan(self, table):
         self.workingOnShiftPlan = True
 
-        if table == 1:            
-            whichTable = self.tableBatchesExtruder1
-        else:           
-            whichTable = self.tableBatchesExtruder2
+        self.saveFile.setEnabled(True)
+        self.saveFileAs.setEnabled(True)
+
+        match table:
+            case 1:            
+                whichTable = self.tableBatchesExtruder1            
+            case 2:           
+                whichTable = self.tableBatchesExtruder2
+            case 3:
+                whichTable = self.tableBatchesHomogenisation
+            case 4:
+                whichTable = self.tableBatchesSilo
 
         if whichTable.rowCount() != 0:  
 
             nextShift = whichTable.cellWidget(0, 1).currentIndex() 
-            nextStartDay = whichTable.cellWidget(0, 2).text() 
+            nextStartDay = whichTable.cellWidget(0, 3).text() 
+            if whichTable.rowCount() <= 1:
+                nextDelivery = whichTable.cellWidget(0, 8).currentIndex()
+            else:
+                nextDelivery = whichTable.cellWidget(1, 8).currentIndex()
                
         for row in range(whichTable.rowCount()):
             
-            match nextShift:
-                case 0:
-                    if (row + 1) < whichTable.rowCount():
+            if table == 1 or table ==2:
 
-                        if int(float(whichTable.cellWidget(row+1, 11).text() or 24)) <= 12:
+                match nextShift:
+                    case 0:
+                        if (row + 1) < whichTable.rowCount():
+
+                            if int(float(whichTable.cellWidget(row+1, 11).text() or 24)) <= 12:
+                                whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+                                whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
+
+                                nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
+
+                                whichTable.cellWidget(row+1, 1).setCurrentIndex(7)
+                                nextShift = 7 
+
+                            else:                            
+                                whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+                                whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
+
+                                nextStartDay = whichTable.cellWidget(row+1, 3).text() 
+
+                                if datetime.datetime.strptime(nextStartDay, '%d.%m.%Y').strftime('%A') != 'Thursday':
+                                    whichTable.cellWidget(row+1, 1).setCurrentIndex(2)                         
+                                    nextShift = 2 
+                                else:
+                                    whichTable.cellWidget(row+1, 1).setCurrentIndex(3)                         
+                                    nextShift = 3 
+
+
+                    case 1:
+                        if (row + 1) < whichTable.rowCount(): 
+
+                            if int(float(whichTable.cellWidget(row+1, 11).text() or 24)) <= 12:
+                                whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+                                whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+
+                                nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
+
+                                whichTable.cellWidget(row+1, 1).setCurrentIndex(5)
+                                nextShift = 5 
+
+                            else:                      
+
+                                whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+                                whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+
+                                nextStartDay = whichTable.cellWidget(row+1, 3).text()                        
+
+                                if datetime.datetime.strptime(nextStartDay, '%d.%m.%Y').strftime('%A') != 'Thursday':
+                                    whichTable.cellWidget(row+1, 1).setCurrentIndex(0)                         
+                                    nextShift = 0 
+                                else:
+                                    whichTable.cellWidget(row+1, 1).setCurrentIndex(4)                                                     
+                                    nextShift = 4  
+
+                    case 2:
+                        if (row + 1) < whichTable.rowCount():   
+
+                            if int(float(whichTable.cellWidget(row+1, 11).text() or 24)) <= 12:
+                                whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+                                whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+
+                                nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
+
+                                whichTable.cellWidget(row+1, 1).setCurrentIndex(6)
+                                nextShift = 6 
+
+                            else:                     
+
+                                whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+                                whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
+
+                                nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
+
+                                whichTable.cellWidget(row+1, 1).setCurrentIndex(1)
+                                nextShift = 1
+                            
+                    
+                    case 3:
+                        if (row + 1) < whichTable.rowCount():                       
+
                             whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
                             whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
 
-                            nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
+                            nextStartDay = whichTable.cellWidget(row+1, 3).text()
+                            
+                            whichTable.cellWidget(row+1, 1).setCurrentIndex(2)                         
+                            nextShift = 2
 
-                            whichTable.cellWidget(row+1, 1).setCurrentIndex(7)
-                            nextShift = 7 
+                    case 4:
+                        if (row + 1) < whichTable.rowCount():                       
 
-                        else:                            
                             whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
                             whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
 
-                            nextStartDay = whichTable.cellWidget(row+1, 3).text() 
+                            nextStartDay = whichTable.cellWidget(row+1, 3).text()
+                            
+                            whichTable.cellWidget(row+1, 1).setCurrentIndex(0)                         
+                            nextShift = 0 
 
-                            if datetime.datetime.strptime(nextStartDay, '%d.%m.%Y').strftime('%A') != 'Thursday':
-                                whichTable.cellWidget(row+1, 1).setCurrentIndex(2)                         
-                                nextShift = 2 
-                            else:
-                                whichTable.cellWidget(row+1, 1).setCurrentIndex(3)                         
-                                nextShift = 3 
-
-
-                case 1:
-                    if (row + 1) < whichTable.rowCount(): 
-
-                        if int(float(whichTable.cellWidget(row+1, 11).text() or 24)) <= 12:
-                            whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-                            whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-
-                            nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
-
-                            whichTable.cellWidget(row+1, 1).setCurrentIndex(5)
-                            nextShift = 5 
-
-                        else:                      
-
-                            whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-                            whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-
-                            nextStartDay = whichTable.cellWidget(row+1, 3).text()                        
-
-                            if datetime.datetime.strptime(nextStartDay, '%d.%m.%Y').strftime('%A') != 'Thursday':
-                                whichTable.cellWidget(row+1, 1).setCurrentIndex(0)                         
-                                nextShift = 0 
-                            else:
-                                whichTable.cellWidget(row+1, 1).setCurrentIndex(4)                                                     
-                                nextShift = 4  
-
-                case 2:
-                    if (row + 1) < whichTable.rowCount():   
-
-                        if int(float(whichTable.cellWidget(row+1, 11).text() or 24)) <= 12:
-                            whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-                            whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-
-                            nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
-
-                            whichTable.cellWidget(row+1, 1).setCurrentIndex(6)
-                            nextShift = 6 
-
-                        else:                     
+                    case 5:
+                        if (row + 1) < whichTable.rowCount():                       
 
                             whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
                             whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
@@ -1809,63 +2599,66 @@ class MainWindow(QMainWindow):
 
                             whichTable.cellWidget(row+1, 1).setCurrentIndex(1)
                             nextShift = 1
-                        
-                
-                case 3:
-                    if (row + 1) < whichTable.rowCount():                       
 
-                        whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-                        whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
+                    case 6:
+                        if (row + 1) < whichTable.rowCount():                       
 
-                        nextStartDay = whichTable.cellWidget(row+1, 3).text()
-                        
-                        whichTable.cellWidget(row+1, 1).setCurrentIndex(2)                         
-                        nextShift = 2
+                            whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+                            whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
 
-                case 4:
-                    if (row + 1) < whichTable.rowCount():                       
+                            nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
 
-                        whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-                        whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
+                            whichTable.cellWidget(row+1, 1).setCurrentIndex(2)
+                            nextShift = 2
 
-                        nextStartDay = whichTable.cellWidget(row+1, 3).text()
-                        
-                        whichTable.cellWidget(row+1, 1).setCurrentIndex(0)                         
-                        nextShift = 0 
+                    case 7:
+                        if (row + 1) < whichTable.rowCount():                       
 
-                case 5:
-                    if (row + 1) < whichTable.rowCount():                       
+                            whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+                            whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
 
-                        whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-                        whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
+                            nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
 
-                        nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
-
-                        whichTable.cellWidget(row+1, 1).setCurrentIndex(1)
-                        nextShift = 1
-
-                case 6:
-                    if (row + 1) < whichTable.rowCount():                       
-
-                        whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-                        whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
-
-                        nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
-
-                        whichTable.cellWidget(row+1, 1).setCurrentIndex(2)
-                        nextShift = 2
-
-                case 7:
-                    if (row + 1) < whichTable.rowCount():                       
-
-                        whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
-                        whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
-
-                        nextStartDay = whichTable.cellWidget(row+1, 3).text()                         
-
-                        whichTable.cellWidget(row+1, 1).setCurrentIndex(0)
-                        nextShift = 0
+                            whichTable.cellWidget(row+1, 1).setCurrentIndex(0)
+                            nextShift = 0
             
+            if table == 3:
+                if (row + 1) < whichTable.rowCount():
+                    
+                    whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
+                    whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
+                    nextStartDay = whichTable.cellWidget(row+1, 3).text()
+
+            if table == 4:                
+                match nextDelivery:
+                    case 0:
+                        if (row + 1) < whichTable.rowCount():
+                            
+                            whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
+                            whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y') + datetime.timedelta(days=1))
+                            nextStartDay = whichTable.cellWidget(row+1, 3).text()
+                            if (row + 2) < whichTable.rowCount():                                
+                                nextDelivery = whichTable.cellWidget(row+2, 8).currentIndex()
+                            else:
+                                nextDelivery = whichTable.cellWidget(row+1, 8).currentIndex() 
+                            
+
+
+                    case 1:    
+                        if (row + 1) < whichTable.rowCount():
+                            
+                            whichTable.cellWidget(row+1, 2).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+                            whichTable.cellWidget(row+1, 3).setDate(datetime.datetime.strptime(nextStartDay, '%d.%m.%Y'))
+                            nextStartDay = whichTable.cellWidget(row+1, 3).text()
+                            if (row + 2) < whichTable.rowCount():                                
+                                nextDelivery = whichTable.cellWidget(row+2, 8).currentIndex()
+                            else:
+                                nextDelivery = whichTable.cellWidget(row+1, 8).currentIndex()    
+                                
+
+
+
+
             if (row + 1) < whichTable.rowCount(): 
                 newKW = datetime.datetime.strptime(whichTable.cellWidget(row+1, 3).date().toString('dd.MM.yyyy'), '%d.%m.%Y').strftime('%V')  
                 whichTable.cellWidget(row+1, 0).setText(newKW)
@@ -1894,6 +2687,10 @@ class MainWindow(QMainWindow):
         self.workingOnShiftPlan = False               
     
     def enumerateBatches(self, table):
+        
+        self.saveFile.setEnabled(True)
+        self.saveFileAs.setEnabled(True)
+
         if table == 1:            
             whichTable = self.tableBatchesExtruder1
         else:           
@@ -1951,16 +2748,21 @@ class MainWindow(QMainWindow):
             wb = load_workbook(filename=self.saveFilePath)
             sheets = wb.sheetnames
 
-            sheetsNo = 2 ### modify for homogenisation and silo
+            sheetsNo = 4 ### modify for homogenisation and silo
 
-            for sheet in range(sheetsNo):
+            for sheet in range(sheetsNo):                
 
                 ws = wb[sheets[sheet]]                
 
-                if sheet == 0:            
-                    whichTable = self.tableBatchesExtruder1                                        
-                else:           
-                    whichTable = self.tableBatchesExtruder2                                   
+                match sheet:
+                    case 0:            
+                        whichTable = self.tableBatchesExtruder1            
+                    case 1:           
+                        whichTable = self.tableBatchesExtruder2
+                    case 2:
+                        whichTable = self.tableBatchesHomogenisation
+                    case 3:
+                        whichTable = self.tableBatchesSilo                                   
 
                 rx = QRegularExpression("SP\\d{1,9}")
                 rx2 = QRegularExpression("32.\\d{1,4}")
@@ -1977,18 +2779,22 @@ class MainWindow(QMainWindow):
                             case 0:                    
                                 whichCalendarWeek = QLineEdit()
                                 whichCalendarWeek.setText(row[rowItem])
-                                whichCalendarWeek.setEnabled(0)
+                                whichCalendarWeek.setEnabled(False)
                                 whichCalendarWeek.setFixedWidth(40)
                                 whichTable.setCellWidget(rowPosition, rowItem, whichCalendarWeek)                                
 
                             case 1:                                            
                                 whichShift = QComboBox()
                                 whichShift.addItems(self.attrShift)
-                                whichShift.setCurrentIndex(row[rowItem])
+                                whichShift.setCurrentText(row[rowItem])
                                 if sheet == 0:
                                     whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(1))
-                                else:
+                                elif sheet == 1:
                                     whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(2))
+                                elif sheet == 2:
+                                    whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(3))
+                                elif sheet == 3:
+                                    whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(4))        
                                 whichShift.setProperty('row', rowPosition)                          
                                 whichTable.setCellWidget(rowPosition, rowItem, whichShift)                       
 
@@ -1996,11 +2802,15 @@ class MainWindow(QMainWindow):
                                 buttonProductionDate = QDateEdit()
                                 buttonProductionDate.setFixedWidth(80)
                                 buttonProductionDate.setDate(row[rowItem]) 
-                                buttonProductionDate.setProperty('row', rowPosition)
-                                if sheet == 0:       
-                                    buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(1)) 
-                                else: 
-                                    buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(2))                                            
+                                buttonProductionDate.setProperty('row', rowPosition)                                 
+                                if sheet == 0:
+                                    buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(1))
+                                elif sheet == 1:
+                                    buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(2))
+                                elif sheet == 2:
+                                    buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(3))
+                                elif sheet == 3:
+                                    buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(4))                                                                          
                                 whichTable.setCellWidget(rowPosition, rowItem, buttonProductionDate) 
 
                             case 3:                                  
@@ -2008,10 +2818,14 @@ class MainWindow(QMainWindow):
                                 buttonProductionDate.setFixedWidth(80)
                                 buttonProductionDate.setDate(row[rowItem])
                                 buttonProductionDate.setProperty('row', rowPosition)
-                                if sheet == 0:       
-                                    buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(1)) 
-                                else: 
-                                    buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(2))               
+                                if sheet == 0:
+                                    buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(1))
+                                elif sheet == 1:
+                                    buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(2))
+                                elif sheet == 2:
+                                    buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(3))
+                                elif sheet == 3:
+                                    buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(4))               
                                 whichTable.setCellWidget(rowPosition, rowItem, buttonProductionDate)
 
                                 if row[rowItem].strftime('%Y.%m.%d') <= datetime.datetime.now().strftime('%Y.%m.%d'):           
@@ -2022,10 +2836,12 @@ class MainWindow(QMainWindow):
                             case 4:                                
                                 whichArticle = QComboBox()
                                 whichArticle.addItem('32.')
-                                whichArticle.addItems(self.attr2)
+                                whichArticle.addItems(self.articleNoList)
                                 whichArticle.setValidator(QRegularExpressionValidator(rx2, self))
-                                whichArticle.setCurrentIndex(row[rowItem])
+                                whichArticle.setCurrentText(row[rowItem])
                                 whichArticle.setEditable(True)
+                                if sheet == 2 or sheet == 3:
+                                    whichArticle.setEnabled(False)
                                 #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
                                 whichTable.setCellWidget(rowPosition, rowItem, whichArticle)
                                 
@@ -2035,6 +2851,8 @@ class MainWindow(QMainWindow):
                                 newBatchNo.setValidator(QRegularExpressionValidator(rx3, self))
                                 newBatchNo.setFixedWidth(100) 
                                 newBatchNo.setMaxLength(8)
+                                if sheet == 2 or sheet == 3:
+                                    newBatchNo.setEnabled(False)
                                 whichTable.setCellWidget(rowPosition, rowItem, newBatchNo) 
 
                             case 6:                                         
@@ -2043,44 +2861,60 @@ class MainWindow(QMainWindow):
                                 newDispo.setValidator(QRegularExpressionValidator(rx, self))
                                 newDispo.setFixedWidth(100) 
                                 newDispo.setMaxLength(8)
+                                if sheet == 2 or sheet == 3:
+                                    newDispo.setEnabled(False)
                                 whichTable.setCellWidget(rowPosition, rowItem, newDispo)      
 
                             case 7:                                
                                 whichCustomer = QComboBox()
                                 whichCustomer.addItem(' ')
-                                whichCustomer.addItems(self.attr1)                                
-                                whichCustomer.setCurrentIndex(row[rowItem])
+                                whichCustomer.addItems(self.customerList)                                
+                                whichCustomer.setCurrentText(row[rowItem])
                                 #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
                                 whichCustomer.setEditable(True)
+                                if sheet == 2 or sheet == 3:
+                                    whichCustomer.setEnabled(False)
                                 whichTable.setCellWidget(rowPosition, rowItem, whichCustomer) 
 
                             case 8:                
                                 whichPackaging = QComboBox()
                                 whichPackaging.addItems(self.attrPack)
-                                whichPackaging.setCurrentIndex(row[rowItem])
+                                whichPackaging.setCurrentText(row[rowItem])
                                 #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
+                                if sheet == 2 or sheet == 3:
+                                    whichPackaging.setEnabled(False)
                                 whichTable.setCellWidget(rowPosition, rowItem, whichPackaging)      
 
                             case 9:               
                                 whichLab = QComboBox()
                                 whichLab.addItems(self.attrLab)
-                                whichLab.setCurrentIndex(row[rowItem])
+                                whichLab.setCurrentText(row[rowItem])
                                 whichLab.setProperty('row', rowPosition)
-                                whichLab.setFixedWidth(80)
-                                if sheet == 0:       
-                                    whichLab.currentIndexChanged.connect(lambda: self.labChanged(1)) 
-                                else: 
-                                    whichLab.currentIndexChanged.connect(lambda: self.labChanged(2))                         
+                                whichLab.setFixedWidth(80)                                 
+                                if sheet == 0:
+                                    whichLab.currentIndexChanged.connect(lambda: self.labChanged(1))
+                                elif sheet == 1:
+                                    whichLab.currentIndexChanged.connect(lambda: self.labChanged(2))
+                                elif sheet == 2:
+                                    whichLab.currentIndexChanged.connect(lambda: self.labChanged(3))
+                                    whichLab.setEnabled(False)
+                                elif sheet == 3:
+                                    whichLab.currentIndexChanged.connect(lambda: self.labChanged(4)) 
+                                    whichLab.setEnabled(False)
                                 whichTable.setCellWidget(rowPosition, rowItem, whichLab)                           
                                     
                             case 10:                                  
                                 buttonDeliveryDate = QDateEdit()
                                 buttonDeliveryDate.setFixedWidth(80)
-                                buttonDeliveryDate.setDate(row[rowItem]) 
-                                if sheet == 0:       
-                                    buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(1)) 
-                                else: 
-                                    buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(2))   
+                                buttonDeliveryDate.setDate(row[rowItem])                                  
+                                if sheet == 0:
+                                    buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(1))
+                                elif sheet == 1:
+                                    buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(2))
+                                elif sheet == 2:
+                                    buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(3))
+                                elif sheet == 3:
+                                    buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(4))
                                 buttonDeliveryDate.setProperty('row', rowPosition)            
                                 whichTable.setCellWidget(rowPosition, rowItem, buttonDeliveryDate)
 
@@ -2090,6 +2924,8 @@ class MainWindow(QMainWindow):
                                 whichBatchSize.setEnabled(True)
                                 whichBatchSize.setFixedWidth(38)
                                 whichBatchSize.setValidator(QRegularExpressionValidator(rx4, self)) 
+                                if sheet == 2 or sheet == 3:
+                                    whichBatchSize.setEnabled(False)
                                 whichTable.setCellWidget(rowPosition, rowItem, whichBatchSize)
 
                             case 12:
@@ -2116,9 +2952,7 @@ class MainWindow(QMainWindow):
                                     whichTable.cellWidget(rowPosition, 3).setStyleSheet('background-color: red')
                                 else:
                                     whichTable.cellWidget(rowPosition, 3).setStyleSheet('background-color: white')
-
-                                
-                    
+                
                     rowPosition = rowPosition + 1 
 
             self.setLoadedFile = True
@@ -2138,21 +2972,26 @@ class MainWindow(QMainWindow):
 
             sheets = wb.sheetnames
 
-            sheetsNo = 2 ### modify for homogenisation and silo
+            sheetsNo = 4 ### modify for homogenisation and silo
 
             for sheet in range(sheetsNo):
 
                 ws = wb[sheets[sheet]]
-                if sheet == 0:            
-                    whichTable = self.tableBatchesExtruder1                                        
-                else:           
-                    whichTable = self.tableBatchesExtruder2
+                match sheet:
+                    case 0:            
+                        whichTable = self.tableBatchesExtruder1            
+                    case 1:           
+                        whichTable = self.tableBatchesExtruder2
+                    case 2:
+                        whichTable = self.tableBatchesHomogenisation
+                    case 3:
+                        whichTable = self.tableBatchesSilo 
 
                 saveTableData = []
                 
                 saveRow = []        
                 for row in range(whichTable.rowCount()): 
-                    saveRow = [whichTable.cellWidget(row, 0).text(), whichTable.cellWidget(row, 1).currentIndex(), datetime.datetime.strptime(whichTable.cellWidget(row, 2).text(), '%d.%m.%Y'), datetime.datetime.strptime(whichTable.cellWidget(row, 3).text(), '%d.%m.%Y'), whichTable.cellWidget(row, 4).currentIndex(), whichTable.cellWidget(row, 5).text(), whichTable.cellWidget(row, 6).text(), whichTable.cellWidget(row, 7).currentIndex(), whichTable.cellWidget(row, 8).currentIndex(), whichTable.cellWidget(row, 9).currentIndex(), datetime.datetime.strptime(whichTable.cellWidget(row, 10).text(), '%d.%m.%Y'), whichTable.cellWidget(row, 11).text(), whichTable.cellWidget(row, 12).text()]
+                    saveRow = [whichTable.cellWidget(row, 0).text(), whichTable.cellWidget(row, 1).currentText(), datetime.datetime.strptime(whichTable.cellWidget(row, 2).text(), '%d.%m.%Y'), datetime.datetime.strptime(whichTable.cellWidget(row, 3).text(), '%d.%m.%Y'), whichTable.cellWidget(row, 4).currentText(), whichTable.cellWidget(row, 5).text(), whichTable.cellWidget(row, 6).text(), whichTable.cellWidget(row, 7).currentText(), whichTable.cellWidget(row, 8).currentText(), whichTable.cellWidget(row, 9).currentText(), datetime.datetime.strptime(whichTable.cellWidget(row, 10).text(), '%d.%m.%Y'), whichTable.cellWidget(row, 11).text(), whichTable.cellWidget(row, 12).text()]
                     saveTableData.append(saveRow)
 
                 for writeRow in saveTableData:
@@ -2166,7 +3005,10 @@ class MainWindow(QMainWindow):
             with open(os.path.join(self.imagePath, 'settings.ini'), 'w') as configfile:
                 self.config.write(configfile)
         
-    def performSaveFile(self):        
+    def performSaveFile(self): 
+        
+        self.saveFile.setEnabled(False)
+        self.saveFileAs.setEnabled(False)       
 
         if self.saveFilePath == '' or self.setLoadedFile == False:
             self.performSaveFileAs()            
@@ -2181,21 +3023,26 @@ class MainWindow(QMainWindow):
 
             sheets = wb.sheetnames
 
-            sheetsNo = 2 ### modify for homogenisation and silo
+            sheetsNo = 4 ### modify for homogenisation and silo
 
             for sheet in range(sheetsNo):
 
                 ws = wb[sheets[sheet]]
-                if sheet == 0:            
-                    whichTable = self.tableBatchesExtruder1                                        
-                else:           
-                    whichTable = self.tableBatchesExtruder2
+                match sheet:
+                    case 0:            
+                        whichTable = self.tableBatchesExtruder1            
+                    case 1:           
+                        whichTable = self.tableBatchesExtruder2
+                    case 2:
+                        whichTable = self.tableBatchesHomogenisation
+                    case 3:
+                        whichTable = self.tableBatchesSilo 
 
                 saveTableData = []
                 
                 saveRow = []        
                 for row in range(whichTable.rowCount()): 
-                    saveRow = [whichTable.cellWidget(row, 0).text(), whichTable.cellWidget(row, 1).currentIndex(), datetime.datetime.strptime(whichTable.cellWidget(row, 2).text(), '%d.%m.%Y'), datetime.datetime.strptime(whichTable.cellWidget(row, 3).text(), '%d.%m.%Y'), whichTable.cellWidget(row, 4).currentIndex(), whichTable.cellWidget(row, 5).text(), whichTable.cellWidget(row, 6).text(), whichTable.cellWidget(row, 7).currentIndex(), whichTable.cellWidget(row, 8).currentIndex(), whichTable.cellWidget(row, 9).currentIndex(), datetime.datetime.strptime(whichTable.cellWidget(row, 10).text(), '%d.%m.%Y'), whichTable.cellWidget(row, 11).text(), whichTable.cellWidget(row, 12).text()]
+                    saveRow = [whichTable.cellWidget(row, 0).text(), whichTable.cellWidget(row, 1).currentText(), datetime.datetime.strptime(whichTable.cellWidget(row, 2).text(), '%d.%m.%Y'), datetime.datetime.strptime(whichTable.cellWidget(row, 3).text(), '%d.%m.%Y'), whichTable.cellWidget(row, 4).currentText(), whichTable.cellWidget(row, 5).text(), whichTable.cellWidget(row, 6).text(), whichTable.cellWidget(row, 7).currentText(), whichTable.cellWidget(row, 8).currentText(), whichTable.cellWidget(row, 9).currentText(), datetime.datetime.strptime(whichTable.cellWidget(row, 10).text(), '%d.%m.%Y'), whichTable.cellWidget(row, 11).text(), whichTable.cellWidget(row, 12).text()]
                     saveTableData.append(saveRow)
 
                 for writeRow in saveTableData:
@@ -2207,17 +3054,30 @@ class MainWindow(QMainWindow):
 
         extruderList = [self.tableBatchesExtruder1, self.tableBatchesExtruder2 ]
 
-        siloList = [self.tableBatchesSilo, self.tableBatchesHomogenisation, ]      
+        siloList = [self.tableBatchesSilo, self.tableBatchesHomogenisation ]  
+
+        attrSiloDelivery = ['Silo', 'Dino'] 
+        attrHomogenisationDelivery = ['Homogenisierung']      
+
 
         rx = QRegularExpression("SP\\d{1,9}")
         rx2 = QRegularExpression("32.\\d{1,4}")
         rx3 = QRegularExpression("1-\\d{1,2}-\\d{1,3}")
         rx4 = QRegularExpression("\\d{1,2}")
 
-        for whichTable in extruderList:
+        checkDispoNo = [] 
+
+        for silo in range(len(siloList)):            
+            if siloList[silo].rowCount() != 0:
+                for item in range(siloList[silo].rowCount()):
+                    checkDispoNo.append(siloList[silo].cellWidget(item, 6).text())       
+
+
+        for extruder in range(len(extruderList)):
+            whichTable = extruderList[extruder] 
 
             saveHomogenisationTable = []
-            saveSiloTable = []
+            saveSiloTable = []            
 
             if whichTable.rowCount() != 0:
             
@@ -2229,11 +3089,21 @@ class MainWindow(QMainWindow):
                     
                     elif whichTable.cellWidget(row, 8).currentIndex() == 3:            
                     
-                        saveHomogenisationTable.append(row)
+                        saveHomogenisationTable.append(row)             
+                
 
                 saveSiloTable.sort()
-                saveHomogenisationTable.sort() 
+                saveHomogenisationTable.sort()               
 
+
+                for silo in range(len(siloList)):
+                    if silo == 0:    
+                        whichSiloTable = saveSiloTable 
+                    else:
+                        whichSiloTable = saveHomogenisationTable                   
+                    
+
+                
                 for silo in range(len(siloList)):
 
                     if silo == 0:    
@@ -2245,152 +3115,172 @@ class MainWindow(QMainWindow):
 
                     for item in whichSiloTable:
                         
-                        rowPosition = otherTable.rowCount()
-                        otherTable.insertRow(rowPosition)
 
-                        rowItem = 0
-                        for rowItem in range(13):                  
+                        if whichTable.cellWidget(item, 6).text() not in checkDispoNo:
+                        
+                            rowPosition = otherTable.rowCount()
+                            otherTable.insertRow(rowPosition)
 
-                            match rowItem:
-                                case 0:                    
-                                    whichCalendarWeek = QLineEdit()
-                                    whichCalendarWeek.setText(whichTable.cellWidget(item, rowItem).text())
-                                    whichCalendarWeek.setEnabled(0)
-                                    whichCalendarWeek.setFixedWidth(40)
-                                    otherTable.setCellWidget(rowPosition, rowItem, whichCalendarWeek)
+                            rowItem = 0
+                            for rowItem in range(13):                  
 
-                                case 1:                                            
-                                    whichShift = QComboBox()
-                                    whichShift.addItems(self.attrShift)
-                                    whichShift.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
-                                    if silo == 0:
-                                        whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(4))
-                                    else:
-                                        whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(3))
-                                    whichShift.setProperty('row', rowPosition)                          
-                                    otherTable.setCellWidget(rowPosition, rowItem, whichShift)                       
+                                match rowItem:
+                                    case 0:                    
+                                        whichCalendarWeek = QLineEdit()
+                                        whichCalendarWeek.setText(whichTable.cellWidget(item, rowItem).text())
+                                        whichCalendarWeek.setEnabled(False)
+                                        whichCalendarWeek.setFixedWidth(40)
+                                        otherTable.setCellWidget(rowPosition, rowItem, whichCalendarWeek)
 
-                                case 2:                                  
-                                    buttonProductionDate = QDateEdit()
-                                    buttonProductionDate.setFixedWidth(80)
-                                    buttonProductionDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(item, rowItem).text(), '%d.%m.%Y')) 
-                                    buttonProductionDate.setProperty('row', rowPosition)
-                                    if silo == 0:       
-                                        buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(4)) 
-                                    else: 
-                                        buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(3))                                            
-                                    otherTable.setCellWidget(rowPosition, rowItem, buttonProductionDate) 
+                                    case 1:                                            
+                                        whichShift = QComboBox()
+                                        whichShift.addItems(self.attrShift)
+                                        whichShift.setCurrentIndex(0)
+                                        if silo == 0:
+                                            whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(4))
+                                        else:
+                                            whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(3))
+                                        whichShift.setProperty('row', rowPosition)                          
+                                        otherTable.setCellWidget(rowPosition, rowItem, whichShift)                       
 
-                                case 3:                                  
-                                    buttonProductionDate = QDateEdit()
-                                    buttonProductionDate.setFixedWidth(80)
-                                    buttonProductionDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(item, rowItem).text(), '%d.%m.%Y'))
-                                    buttonProductionDate.setProperty('row', rowPosition)
-                                    if silo == 0:       
-                                        buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(4)) 
-                                    else: 
-                                        buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(3))               
-                                    otherTable.setCellWidget(rowPosition, rowItem, buttonProductionDate)                            
+                                    case 2:                                  
+                                        buttonProductionDate = QDateEdit()
+                                        buttonProductionDate.setFixedWidth(80)
+                                        buttonProductionDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(item, rowItem+1).text(), '%d.%m.%Y')) 
+                                        buttonProductionDate.setProperty('row', rowPosition)
+                                        if silo == 0:       
+                                            buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(4)) 
+                                        else: 
+                                            buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(3))                                            
+                                        otherTable.setCellWidget(rowPosition, rowItem, buttonProductionDate) 
 
-                                case 4:                                
-                                    whichArticle = QComboBox()
-                                    whichArticle.addItem('32.')
-                                    whichArticle.addItems(self.attr2)
-                                    whichArticle.setValidator(QRegularExpressionValidator(rx2, self))
-                                    whichArticle.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
-                                    whichArticle.setEditable(True)
-                                    #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
-                                    otherTable.setCellWidget(rowPosition, rowItem, whichArticle)
-                                    
-                                case 5:                                         
-                                    newBatchNo = QLineEdit()                                                             
-                                    newBatchNo.setText(whichTable.cellWidget(item, rowItem).text())                                    
-                                    newBatchNo.setValidator(QRegularExpressionValidator(rx3, self))
-                                    newBatchNo.setFixedWidth(100) 
-                                    newBatchNo.setMaxLength(8)
-                                    otherTable.setCellWidget(rowPosition, rowItem, newBatchNo) 
+                                    case 3:                                  
+                                        buttonProductionDate = QDateEdit()
+                                        buttonProductionDate.setFixedWidth(80)
+                                        buttonProductionDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(item, rowItem).text(), '%d.%m.%Y'))
+                                        buttonProductionDate.setProperty('row', rowPosition)
+                                        if silo == 0:       
+                                            buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(4)) 
+                                        else: 
+                                            buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(3))               
+                                        otherTable.setCellWidget(rowPosition, rowItem, buttonProductionDate)                            
 
-                                case 6:                                         
-                                    newDispo = QLineEdit()
-                                    newDispo.setText(whichTable.cellWidget(item, rowItem).text())
-                                    newDispo.setValidator(QRegularExpressionValidator(rx, self))
-                                    newDispo.setFixedWidth(100) 
-                                    newDispo.setMaxLength(8)
-                                    otherTable.setCellWidget(rowPosition, rowItem, newDispo)      
-
-                                case 7:                                
-                                    whichCustomer = QComboBox()
-                                    whichCustomer.addItem(' ')
-                                    whichCustomer.addItems(self.attr1)                                
-                                    whichCustomer.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
-                                    whichCustomer.setEditable(True)
-                                    #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
-                                    otherTable.setCellWidget(rowPosition, rowItem, whichCustomer) 
-
-                                case 8:                
-                                    whichPackaging = QComboBox()
-                                    whichPackaging.addItems(self.attrPack)
-                                    whichPackaging.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
-                                    #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
-                                    otherTable.setCellWidget(rowPosition, rowItem, whichPackaging)      
-
-                                case 9:               
-                                    whichLab = QComboBox()
-                                    whichLab.addItems(self.attrLab)
-                                    whichLab.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
-                                    whichLab.setProperty('row', rowPosition)
-                                    whichLab.setFixedWidth(80)
-                                    if silo == 0:       
-                                        whichLab.currentIndexChanged.connect(lambda: self.labChanged(4)) 
-                                    else: 
-                                        whichLab.currentIndexChanged.connect(lambda: self.labChanged(3))                            
-                                    otherTable.setCellWidget(rowPosition, rowItem, whichLab)                           
+                                    case 4:                                
+                                        whichArticle = QComboBox()
+                                        whichArticle.addItem('32.')
+                                        whichArticle.addItems(self.articleNoList)
+                                        whichArticle.setValidator(QRegularExpressionValidator(rx2, self))
+                                        whichArticle.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
+                                        whichArticle.setEditable(True)
+                                        whichArticle.setEnabled(False)
+                                        #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
+                                        otherTable.setCellWidget(rowPosition, rowItem, whichArticle)
                                         
-                                case 10:                                  
-                                    buttonDeliveryDate = QDateEdit()
-                                    buttonDeliveryDate.setFixedWidth(80)
-                                    buttonDeliveryDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(item, rowItem).text(), '%d.%m.%Y')) 
-                                    if silo == 0:       
-                                        buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(4)) 
-                                    else: 
-                                        buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(3))   
-                                    buttonDeliveryDate.setProperty('row', rowPosition)            
-                                    otherTable.setCellWidget(rowPosition, rowItem, buttonDeliveryDate)
+                                    case 5:                                         
+                                        newBatchNo = QLineEdit()
+                                        if silo == 0:
+                                            newBatchNo.setText(whichTable.cellWidget(item, rowItem).text()) 
+                                        else:
+                                            if extruder == 0:
+                                                newNoHomogenisation = whichTable.cellWidget(item, rowItem).text()[-6:] + '.1'
+                                                newBatchNo.setText(str(newNoHomogenisation)) 
+                                            else:
+                                                newNoHomogenisation = whichTable.cellWidget(item, rowItem).text()[-6:] + '.2'
+                                                newBatchNo.setText(str(newNoHomogenisation))
+                                        newBatchNo.setValidator(QRegularExpressionValidator(rx3, self))
+                                        newBatchNo.setFixedWidth(100) 
+                                        newBatchNo.setMaxLength(8)
+                                        newBatchNo.setEnabled(False)
+                                        otherTable.setCellWidget(rowPosition, rowItem, newBatchNo) 
 
-                                case 11:
-                                    whichBatchSize = QLineEdit()
-                                    whichBatchSize.setText(whichTable.cellWidget(item, rowItem).text())
-                                    whichBatchSize.setEnabled(True)
-                                    whichBatchSize.setFixedWidth(38)
-                                    whichBatchSize.setValidator(QRegularExpressionValidator(rx4, self)) 
-                                    otherTable.setCellWidget(rowPosition, rowItem, whichBatchSize)
+                                    case 6:                                         
+                                        newDispo = QLineEdit()
+                                        newDispo.setText(whichTable.cellWidget(item, rowItem).text())
+                                        newDispo.setValidator(QRegularExpressionValidator(rx, self))
+                                        newDispo.setFixedWidth(100) 
+                                        newDispo.setMaxLength(8)
+                                        newDispo.setEnabled(False)
+                                        otherTable.setCellWidget(rowPosition, rowItem, newDispo)      
 
-                                case 12:
-                                    whichDeliveryDate = QLineEdit()
-                                    whichDeliveryDate.setText(whichTable.cellWidget(item, rowItem).text())
-                                    whichDeliveryDate.setEnabled(False)
-                                    whichDeliveryDate.setFixedWidth(38)
-                                    otherTable.setCellWidget(rowPosition, rowItem, whichDeliveryDate) 
+                                    case 7:                                
+                                        whichCustomer = QComboBox()
+                                        whichCustomer.addItem(' ')
+                                        whichCustomer.addItems(self.customerList)                                
+                                        whichCustomer.setCurrentIndex(0)
+                                        whichCustomer.setEditable(True)
+                                        whichCustomer.setEnabled(False)
+                                        #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
+                                        otherTable.setCellWidget(rowPosition, rowItem, whichCustomer) 
 
-                                    newTimeToDelivery = int(otherTable.cellWidget(rowPosition, rowItem).text() ) 
+                                    case 8:                
+                                        whichPackaging = QComboBox()
+                                        if silo == 0:
+                                            whichPackaging.addItems(attrSiloDelivery)                                        
+                                        else:
+                                            whichPackaging.addItems(attrHomogenisationDelivery)
+                                            whichPackaging.setEnabled(False)
+                                        whichPackaging.setCurrentIndex(0)
+                                        #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
+                                        otherTable.setCellWidget(rowPosition, rowItem, whichPackaging)      
 
-                                    if otherTable.cellWidget(rowPosition, 9).currentIndex() == 1 and newTimeToDelivery < self.timeDensity:            
-                                        otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red')
-                                    elif otherTable.cellWidget(rowPosition, 9).currentIndex() == 2 and newTimeToDelivery < self.timeMechanics:            
-                                        otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red') 
-                                    elif otherTable.cellWidget(rowPosition, 9).currentIndex() == 3 and newTimeToDelivery < self.timeReach:            
-                                        otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red') 
-                                    elif newTimeToDelivery < self.timeNormal:            
-                                        otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red')       
-                                    else:
-                                        otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: white')    
+                                    case 9:               
+                                        whichLab = QComboBox()
+                                        whichLab.addItems(self.attrLab)
+                                        whichLab.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
+                                        whichLab.setProperty('row', rowPosition)
+                                        whichLab.setFixedWidth(80)
+                                        whichLab.setEnabled(False)
+                                        if silo == 0:       
+                                            whichLab.currentIndexChanged.connect(lambda: self.labChanged(4)) 
+                                        else: 
+                                            whichLab.currentIndexChanged.connect(lambda: self.labChanged(3))                            
+                                        otherTable.setCellWidget(rowPosition, rowItem, whichLab)                           
+                                            
+                                    case 10:                                  
+                                        buttonDeliveryDate = QDateEdit()
+                                        buttonDeliveryDate.setFixedWidth(80)
+                                        buttonDeliveryDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(item, rowItem).text(), '%d.%m.%Y')) 
+                                        if silo == 0:       
+                                            buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(4)) 
+                                        else: 
+                                            buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(3))   
+                                        buttonDeliveryDate.setProperty('row', rowPosition)            
+                                        otherTable.setCellWidget(rowPosition, rowItem, buttonDeliveryDate)
 
-                                    if otherTable.cellWidget(rowPosition, 3).date().toString('yyyy.MM.dd') <= datetime.datetime.now().strftime('%Y.%m.%d'):             
-                                        otherTable.cellWidget(rowPosition, 3).setStyleSheet('background-color: red')
-                                    else:
-                                        otherTable.cellWidget(rowPosition, 3).setStyleSheet('background-color: white')                    
-            
-            
+                                    case 11:
+                                        whichBatchSize = QLineEdit()
+                                        whichBatchSize.setText(whichTable.cellWidget(item, rowItem).text())
+                                        whichBatchSize.setEnabled(True)
+                                        whichBatchSize.setFixedWidth(38)
+                                        whichBatchSize.setEnabled(False)
+                                        whichBatchSize.setValidator(QRegularExpressionValidator(rx4, self)) 
+                                        otherTable.setCellWidget(rowPosition, rowItem, whichBatchSize)
+
+                                    case 12:
+                                        whichDeliveryDate = QLineEdit()
+                                        whichDeliveryDate.setText(whichTable.cellWidget(item, rowItem).text())
+                                        whichDeliveryDate.setEnabled(False)
+                                        whichDeliveryDate.setFixedWidth(38)
+                                        otherTable.setCellWidget(rowPosition, rowItem, whichDeliveryDate) 
+
+                                        newTimeToDelivery = int(otherTable.cellWidget(rowPosition, rowItem).text() ) 
+
+                                        if otherTable.cellWidget(rowPosition, 9).currentIndex() == 1 and newTimeToDelivery < self.timeDensity:            
+                                            otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red')
+                                        elif otherTable.cellWidget(rowPosition, 9).currentIndex() == 2 and newTimeToDelivery < self.timeMechanics:            
+                                            otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red') 
+                                        elif otherTable.cellWidget(rowPosition, 9).currentIndex() == 3 and newTimeToDelivery < self.timeReach:            
+                                            otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red') 
+                                        elif newTimeToDelivery < self.timeNormal:            
+                                            otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red')       
+                                        else:
+                                            otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: white')    
+
+                                        if otherTable.cellWidget(rowPosition, 3).date().toString('yyyy.MM.dd') <= datetime.datetime.now().strftime('%Y.%m.%d'):             
+                                            otherTable.cellWidget(rowPosition, 3).setStyleSheet('background-color: red')
+                                        else:
+                                            otherTable.cellWidget(rowPosition, 3).setStyleSheet('background-color: white')                    
+               
 
 def main():               
     app = QApplication(sys.argv)
