@@ -27,15 +27,16 @@ from PyQt6.QtWidgets import (
     QTabWidget,
     QToolBar, 
     QCheckBox, 
-    QTextEdit 
-    
-                
+    QTextEdit,
+    QMessageBox,
+    QDialog             
 )
-from PyQt6.QtGui import QIcon, QAction, QIntValidator, QRegularExpressionValidator
+from PyQt6.QtGui import QIcon, QAction, QIntValidator, QRegularExpressionValidator, QTextDocument, QTextCursor, QTextTableFormat, QPageLayout, QPageSize
+from PyQt6.QtPrintSupport import QPrintDialog, QPrinter, QPrintPreviewDialog
 
 try:
     from ctypes import windll  # Only exists on Windows.
-    myappid = 'realblack7.productionmanager.v.1'
+    myappid = 'realblack7.productionmanager.v0.3'
     windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 except ImportError:
     pass
@@ -934,7 +935,7 @@ class MainWindow(QMainWindow):
 
         self.attrShift = ['F-S','S-N','N-F','N-W-S', 'W-S-N', 'F', 'S', 'N']
         self.attrPack = ['Bigbag','Oktabin','Silo','Homogenisierung']
-        self.attrLab = ['-','Dichte','Mechanik','REACh']           
+        self.attrLab = ['-','Dichte','Mechanik','REACh']     ### Dichte+Mechanik?  ### Muster?    
 
         self.setWindowTitle("Produktionsplaner")        
         self.setAcceptDrops(False)
@@ -975,11 +976,7 @@ class MainWindow(QMainWindow):
 
         self.generateAdditiveUsageButton = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'flask-gen.png')), 'Additive-Verbrauch bestimmen  (Strg + U)', self)        
         self.generateAdditiveUsageButton.triggered.connect(self.generateAdditiveUsage)
-        self.generateAdditiveUsageButton.setShortcut("Ctrl+U")  
-
-        self.printPlans = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'print-solid.svg')), 'Plan drucken  (Strg + P)', self)        
-        #self.printPlans.triggered.connect(self.performPrintPlans)
-        self.printPlans.setShortcut("Ctrl+P")     
+        self.generateAdditiveUsageButton.setShortcut("Ctrl+U")
 
         self.changeCustomers = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'truck-gear.png')), 'Kunden ansehen/ändern/hinzufügen (Strg + T)', self)        
         self.changeCustomers.triggered.connect(lambda: self.openSecondaryWindow(2))
@@ -999,14 +996,12 @@ class MainWindow(QMainWindow):
 
         self.menubar.addAction(self.openFileDialog)
         self.menubar.addAction(self.saveFile)
-        self.menubar.addAction(self.saveFileAs)
+        self.menubar.addAction(self.saveFileAs)         
         self.menubar.addSeparator()
         self.menubar.addAction(self.addBatch)  
         self.menubar.addAction(self.generateSiloListsButton)
         self.menubar.addAction(self.generateAdditiveUsageButton)
-        self.menubar.addSeparator()
-        self.menubar.addAction(self.printPlans) 
-        self.menubar.addSeparator()
+        self.menubar.addSeparator()        
         self.menubar.addAction(self.changeCustomers)
         self.menubar.addAction(self.changeArticles)
         self.menubar.addAction(self.changeAdditives)
@@ -1233,6 +1228,11 @@ class MainWindow(QMainWindow):
         self.createShiftPlan3.setFixedWidth(100)
         self.createShiftPlan3.clicked.connect(lambda: self.createShiftPlan(3))
 
+        self.printPlans = QPushButton('Plan drucken')
+        self.printPlans.setIcon(QIcon(os.path.join(self.imagePath, 'assets', 'print-solid.svg')))       
+        self.printPlans.clicked.connect(lambda: self.handlePrint(1))
+        self.printPlans.setShortcut("Ctrl+P")    
+
         tabLayoutHomogenisation = QVBoxLayout()
         buttonsLayoutHomogenisation = QHBoxLayout() 
 
@@ -1241,6 +1241,7 @@ class MainWindow(QMainWindow):
         buttonsLayoutHomogenisation.addWidget(self.moveRowDown3)
         buttonsLayoutHomogenisation.addWidget(self.createShiftPlan3)
         buttonsLayoutHomogenisation.addWidget(self.deleteBatchHomogenisation) 
+        buttonsLayoutHomogenisation.addWidget(self.printPlans)
         buttonsLayoutHomogenisation.addStretch()
         
         tabLayoutHomogenisation.addLayout(buttonsLayoutHomogenisation) 
@@ -1299,6 +1300,11 @@ class MainWindow(QMainWindow):
         self.createShiftPlan4.setFixedWidth(100)
         self.createShiftPlan4.clicked.connect(lambda: self.createShiftPlan(4))
 
+        self.printPlans = QPushButton('Plan drucken')
+        self.printPlans.setIcon(QIcon(os.path.join(self.imagePath, 'assets', 'print-solid.svg')))       
+        self.printPlans.clicked.connect(lambda: self.handlePrint(2))
+        self.printPlans.setShortcut("Ctrl+P")  
+
         tabLayoutSilo = QVBoxLayout()
         buttonsLayoutSilo = QHBoxLayout() 
 
@@ -1307,6 +1313,7 @@ class MainWindow(QMainWindow):
         buttonsLayoutSilo.addWidget(self.moveRowDown4)
         buttonsLayoutSilo.addWidget(self.createShiftPlan4)
         buttonsLayoutSilo.addWidget(self.deleteBatchSilo) 
+        buttonsLayoutSilo.addWidget(self.printPlans)
         buttonsLayoutSilo.addStretch()
         
         tabLayoutSilo.addLayout(buttonsLayoutSilo) 
@@ -1659,6 +1666,7 @@ class MainWindow(QMainWindow):
                     newBatchNo.setValidator(QRegularExpressionValidator(rx3, self))
                     newBatchNo.setFixedWidth(100) 
                     newBatchNo.setMaxLength(8)
+                    newBatchNo.textChanged.connect(self.enableSaving)
                     self.tableBatchesExtruder1.setCellWidget(rowPosition, item, newBatchNo) 
 
                 case 6:                                         
@@ -1667,6 +1675,7 @@ class MainWindow(QMainWindow):
                     newDispo.setValidator(QRegularExpressionValidator(rx, self))
                     newDispo.setFixedWidth(100) 
                     newDispo.setMaxLength(8)
+                    newDispo.textChanged.connect(self.enableSaving)
                     self.tableBatchesExtruder1.setCellWidget(rowPosition, item, newDispo)    
 
                 case 7:                                
@@ -1676,14 +1685,13 @@ class MainWindow(QMainWindow):
                     whichCustomer.setCurrentText(addBatchArray[7])
                     whichCustomer.setEditable(True)
                     whichCustomer.currentIndexChanged.connect(self.enableSaving) 
-                    #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
                     self.tableBatchesExtruder1.setCellWidget(rowPosition, item, whichCustomer)   
 
                 case 8:                                    
                     whichPackaging = QComboBox()
                     whichPackaging.addItems(self.attrPack)
                     whichPackaging.setCurrentIndex(addBatchArray[8])
-                    #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
+                    whichPackaging.currentIndexChanged.connect(self.enableSaving)
                     self.tableBatchesExtruder1.setCellWidget(rowPosition, item, whichPackaging)      
 
                 case 9:                                    
@@ -1714,6 +1722,7 @@ class MainWindow(QMainWindow):
                     whichBatchSize.setEnabled(True)
                     whichBatchSize.setFixedWidth(38)
                     whichBatchSize.setValidator(QRegularExpressionValidator(rx4, self)) 
+                    whichBatchSize.textChanged.connect(self.enableSaving)
                     self.tableBatchesExtruder1.setCellWidget(rowPosition, item, whichBatchSize)
 
                 case 12:
@@ -1779,13 +1788,22 @@ class MainWindow(QMainWindow):
         self.tableBatchesExtruder2.blockSignals(False)
 
     def closeEvent(self, event):
-        # do stuff
-       
-        if self.closeMenu == True:
-            event.accept()         
+
+        if self.saveFile.isEnabled() == True:
+
+            messageBox = QMessageBox().warning(self, 'Schließen ohne zu speichern?', 'Du hast ungespeicherte Änderungen. Trotzdem schließen?', buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
+        
+            if messageBox == QMessageBox.StandardButton.Yes:                
+                event.accept()
+            else:                
+                event.ignore()
 
         else:
-            event.ignore()
+            if self.closeMenu == True:
+                event.accept()         
+
+            else:
+                event.ignore()
 
     def enableSaving(self):
         self.saveFile.setEnabled(True)
@@ -1899,6 +1917,7 @@ class MainWindow(QMainWindow):
                             newBatchNo.setValidator(QRegularExpressionValidator(rx3, self))
                             newBatchNo.setFixedWidth(100) 
                             newBatchNo.setMaxLength(8)
+                            newBatchNo.textChanged.connect(self.enableSaving)
                             otherTable.setCellWidget(rowPosition, rowItem, newBatchNo) 
 
                         case 6:                                         
@@ -1907,6 +1926,7 @@ class MainWindow(QMainWindow):
                             newDispo.setValidator(QRegularExpressionValidator(rx, self))
                             newDispo.setFixedWidth(100) 
                             newDispo.setMaxLength(8)
+                            newDispo.textChanged.connect(self.enableSaving)
                             otherTable.setCellWidget(rowPosition, rowItem, newDispo)      
 
                         case 7:                                
@@ -1915,14 +1935,17 @@ class MainWindow(QMainWindow):
                             whichCustomer.addItems(self.customerList)                                
                             whichCustomer.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
                             whichCustomer.setEditable(True)
-                            #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
+                            whichCustomer.currentIndexChanged.connect(self.enableSaving)
                             otherTable.setCellWidget(rowPosition, rowItem, whichCustomer) 
 
                         case 8:                
                             whichPackaging = QComboBox()
                             whichPackaging.addItems(self.attrPack)
                             whichPackaging.setCurrentIndex(whichTable.cellWidget(item, rowItem).currentIndex())
-                            #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
+                            if table == 1: 
+                                whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(2))
+                            else: 
+                                whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
                             otherTable.setCellWidget(rowPosition, rowItem, whichPackaging)      
 
                         case 9:               
@@ -1953,7 +1976,8 @@ class MainWindow(QMainWindow):
                             whichBatchSize.setText(whichTable.cellWidget(item, rowItem).text())
                             whichBatchSize.setEnabled(True)
                             whichBatchSize.setFixedWidth(38)
-                            whichBatchSize.setValidator(QRegularExpressionValidator(rx4, self)) 
+                            whichBatchSize.setValidator(QRegularExpressionValidator(rx4, self))
+                            whichBatchSize.textChanged.connect(self.enableSaving) 
                             otherTable.setCellWidget(rowPosition, rowItem, whichBatchSize)
 
                         case 12:
@@ -3211,6 +3235,7 @@ class MainWindow(QMainWindow):
                                     whichArticle.setValidator(QRegularExpressionValidator(rx2, self))
                                     whichArticle.setCurrentText(row[rowItem])
                                     whichArticle.setEditable(True)
+                                    whichArticle.currentIndexChanged.connect(self.enableSaving)
                                     whichArticle.setProperty('row', rowPosition)
                                     for article in range(len(self.articleNoList)):
                             
@@ -3223,7 +3248,7 @@ class MainWindow(QMainWindow):
                                     whichArticle.setCurrentText(row[rowItem])
                                     whichArticle.setEditable(False)
                                     whichArticle.setProperty('row', rowPosition)                                 
-   
+
                                     whichIcon = self.colorList[self.dictArticleColors[row[rowItem]]][0]+'.png'               
                                     whichArticle.setItemIcon(0, QIcon(QIcon(os.path.join(self.imagePath, 'assets', whichIcon))))                                
                                     
@@ -3240,6 +3265,7 @@ class MainWindow(QMainWindow):
                                 newBatchNo.setValidator(QRegularExpressionValidator(rx3, self))
                                 newBatchNo.setFixedWidth(100) 
                                 newBatchNo.setMaxLength(8)
+                                newBatchNo.textChanged.connect(self.enableSaving)
                                 if sheet == 2 or sheet == 3:
                                     newBatchNo.setReadOnly(True)
                                 whichTable.setCellWidget(rowPosition, rowItem, newBatchNo) 
@@ -3250,6 +3276,7 @@ class MainWindow(QMainWindow):
                                 newDispo.setValidator(QRegularExpressionValidator(rx, self))
                                 newDispo.setFixedWidth(100) 
                                 newDispo.setMaxLength(8)
+                                newDispo.textChanged.connect(self.enableSaving)
                                 if sheet == 2 or sheet == 3:
                                     newDispo.setReadOnly(True)
                                 whichTable.setCellWidget(rowPosition, rowItem, newDispo)      
@@ -3275,11 +3302,12 @@ class MainWindow(QMainWindow):
                                     whichPackaging = QComboBox()
                                     whichPackaging.addItems(self.attrPack)
                                     whichPackaging.setCurrentText(row[rowItem])
-                                    #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
+                                    whichPackaging.currentIndexChanged.connect(self.enableSaving)
                                 elif sheet == 3:
                                     whichPackaging = QComboBox()
                                     whichPackaging.addItems(attrSiloDelivery)  
-                                    whichPackaging.setCurrentIndex(0)                                      
+                                    whichPackaging.setCurrentIndex(0)  
+                                    whichPackaging.currentIndexChanged.connect(self.enableSaving)                                    
                                 else:
                                     whichPackaging = QLineEdit()
                                     whichPackaging.setText('Homogenisierung')
@@ -3327,6 +3355,7 @@ class MainWindow(QMainWindow):
                                 whichBatchSize.setEnabled(True)
                                 whichBatchSize.setFixedWidth(38)
                                 whichBatchSize.setValidator(QRegularExpressionValidator(rx4, self)) 
+                                whichBatchSize.textChanged.connect(self.enableSaving)
                                 if sheet == 2 or sheet == 3:
                                     whichBatchSize.setReadOnly(True)
                                 whichTable.setCellWidget(rowPosition, rowItem, whichBatchSize)
@@ -3423,6 +3452,8 @@ class MainWindow(QMainWindow):
             
             wb.save(self.saveFilePath)
 
+            self.setLoadedFile = True
+
             self.config['PATH']['LastSaved'] = self.saveFilePath 
             with open(os.path.join(self.imagePath, 'settings.ini'), 'w') as configfile:
                 self.config.write(configfile)
@@ -3433,6 +3464,7 @@ class MainWindow(QMainWindow):
         self.saveFileAs.setEnabled(False)       
 
         if self.saveFilePath == '' or self.setLoadedFile == False:
+            print(self.saveFilePath)
             self.performSaveFileAs()            
         else:
             wb = Workbook() 
@@ -3792,6 +3824,98 @@ class MainWindow(QMainWindow):
                 self.additiveUsageText.append(additive + ': ' + str(round(mass*(1+self.usageFactor/100), 2)).replace('.', ',') + ' t')   
             self.additiveUsageText.append('\n')                     
 
+    def handlePrint(self, table): 
+        self.printTable = table
+
+        dialog = QPrintPreviewDialog()
+        dialog.paintRequested.connect(self.handlePaintRequest)
+        dialog.exec()
+
+    def handlePaintRequest(self, printer): 
+        match self.printTable:
+            case 1:
+                whichTable = self.tableBatchesHomogenisation
+            case 2:
+                whichTable = self.tableBatchesSilo
+
+
+        document = QTextDocument()
+        cursor = QTextCursor(document)
+        printer.setPageOrientation(QPageLayout.Orientation.Landscape) 
+        
+        tableFormat = QTextTableFormat()        
+        tableFormat.setBorder(0.5)
+        tableFormat.setCellSpacing(0)
+        tableFormat.setTopMargin(0)
+        tableFormat.setCellPadding(4)
+        
+        table = cursor.insertTable( whichTable.rowCount() + 1, whichTable.columnCount(), tableFormat)
+        header = ['KW', 'Schichten', 'Beginn', 'Ende', 'Artikel-Nr.', 'Chargen-Nr.', 'Dispo.-Nr.', 'Kunde', 'Zusatz', 'Labor', 'Abholung', 't', 'Vorlauf']
+        for item in header:
+            cursor.insertText(item)
+            cursor.movePosition(QTextCursor.MoveOperation.NextCell) 
+
+        for row in range(whichTable.rowCount()):            
+            for col in range(table.columns()):
+                match col:
+                        case 0: 
+                            cursor.insertText(whichTable.cellWidget(row, col).text())
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)                                
+
+                        case 1:  
+                            cursor.insertText(whichTable.cellWidget(row, col).currentText())   
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)                                       
+                                                   
+                        case 2:
+                            cursor.insertText(whichTable.cellWidget(row, col).text()) 
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)                                 
+                        
+                        case 3: 
+                            cursor.insertText(whichTable.cellWidget(row, col).text())
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)                                
+                                                       
+                        case 4: 
+                            cursor.insertText(whichTable.cellWidget(row, col).currentText()) 
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)                              
+                                                      
+                        case 5:  
+                            cursor.insertText(whichTable.cellWidget(row, col).text())
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)                                       
+
+                        case 6: 
+                            cursor.insertText(whichTable.cellWidget(row, col).text())  
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)    
+
+                        case 7:                             
+                            cursor.insertText(whichTable.cellWidget(row, col).text())                                
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)
+
+                        case 8:  
+                            match self.printTable:
+                                case 1:
+                                    cursor.insertText(whichTable.cellWidget(row, col).text())
+                                case 2:
+                                    cursor.insertText(whichTable.cellWidget(row, col).currentText())
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)       
+
+                        case 9:                            
+                            cursor.insertText(whichTable.cellWidget(row, col).text())
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)                            
+                                
+                        case 10: 
+                            cursor.insertText(whichTable.cellWidget(row, col).text())
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)
+
+                        case 11:
+                            cursor.insertText(whichTable.cellWidget(row, col).text())
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)
+
+                        case 12:
+                            cursor.insertText(whichTable.cellWidget(row, col).text())
+                            cursor.movePosition(QTextCursor.MoveOperation.NextCell)                       
+                
+            
+        document.print(printer)
 
 def main():               
     app = QApplication(sys.argv)
