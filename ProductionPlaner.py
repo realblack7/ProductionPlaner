@@ -3763,6 +3763,7 @@ class MainWindow(QMainWindow):
                                         whichComment.setText(whichTable.cellWidget(item, rowItem).text())
                                         whichComment.setFixedWidth(350)
                                         otherTable.setCellWidget(rowPosition, rowItem, whichComment) 
+    
     def generateAdditiveUsage(self):
         self.additiveUsageText.clear()
         tableList = [self.tableBatchesExtruder1, self.tableBatchesExtruder2]
@@ -3795,7 +3796,7 @@ class MainWindow(QMainWindow):
                     currentWeek = int(whichTable.cellWidget(row, 0).text())
 
                     if currentWeek != checkWeek:
-                        dictAdditiveUsage = {}
+                        dictAdditiveUsage = {'Granulat': 0}
 
                     try:                        
                         additiveKeyValue = dictAdditives[whichTable.cellWidget(row, 4).currentText()].items()
@@ -3803,14 +3804,20 @@ class MainWindow(QMainWindow):
                     except:
                         additiveKeyValue = {}
 
-                    else:                
-
+                    else: 
+                        if whichTable.cellWidget(row, 11).text() == '':
+                            batchMass = 0
+                        else:
+                            batchMass = int(whichTable.cellWidget(row, 11).text().replace(',','.'))
+                        dictAdditiveUsage['Granulat'] = dictAdditiveUsage['Granulat'] + batchMass                
+                        
                         for key, value in additiveKeyValue:
                             if key in dictAdditiveUsage:
                                 dictAdditiveUsage[key] = dictAdditiveUsage[key] + value * int(whichTable.cellWidget(row, 11).text().replace(',','.')) / 100
+                                
                             else:
                                 dictAdditiveUsage[key] = value * int(whichTable.cellWidget(row, 11).text().replace(',','.')) / 100
-                        
+                                
                         dictWeek[whichTable.cellWidget(row, 0).text()] = dictAdditiveUsage
 
                         checkWeek = currentWeek
@@ -3819,7 +3826,7 @@ class MainWindow(QMainWindow):
                 dictWeekEx1 = dictWeek
             else:
                 dictWeekEx2 = dictWeek
-        
+       
         dictWeekBoth ={}
 
         for week, additives in dictWeekEx1.items():
@@ -3833,7 +3840,7 @@ class MainWindow(QMainWindow):
                         additiveHelper[additive] = mass                        
                         
                     else:                                              
-                        additiveHelper[additive] = mass + dictWeekEx2[week][additive]
+                        additiveHelper[additive] = mass + dictWeekEx2[week][additive] #Granulat check
 
                 for additive, mass in dictWeekEx2[week].items():
                     
@@ -3844,13 +3851,29 @@ class MainWindow(QMainWindow):
                         additiveHelper[additive] = mass + dictWeekEx1[week][additive]
                         
                 dictWeekBoth[week] = additiveHelper
-
-             
-        for week, additives in dictWeekBoth.items():
+            
+            for week, additives in dictWeekEx2.items():
+                if not week in dictWeekEx1:
+                    dictWeekBoth[week] = additives
+        
+        dictWeekBothSorted = dict(sorted(dictWeekBoth.items(), key=lambda item: item[0]))
+     
+        for week, additives in dictWeekBothSorted.items():
 
             self.additiveUsageText.append('KW' + week)
+            self.additiveUsageText.append('Geplant sind ' + str(additives['Granulat']) + ' t Granulat mit:')
+            sumAdditives = 0
             for additive, mass in additives.items():
-                self.additiveUsageText.append(additive + ': ' + str(round(mass*(1+self.usageFactor/100), 2)).replace('.', ',') + ' t')   
+                if not additive == 'Granulat':                
+                    sumAdditives = sumAdditives + round(mass*(1+self.usageFactor/100), 2)
+                    self.additiveUsageText.append('   ' + additive + ': ' + str(round(mass*(1+self.usageFactor/100), 2)).replace('.', ',') + ' t')
+
+            massBales = str(round((additives['Granulat'] - sumAdditives) / 0.72)).replace('.', ',')
+            self.additiveUsageText.append('   Ballen: ' + massBales + ' t')
+
+            amountPalletes = str(round(additives['Granulat'] / 1.1)).replace('.', ',')
+            self.additiveUsageText.append('   Paletten: ' + amountPalletes + ' Stück')
+                  
             self.additiveUsageText.append('\n')                     
 
     def handlePrint(self, table): 
