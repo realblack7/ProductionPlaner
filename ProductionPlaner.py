@@ -35,7 +35,7 @@ from PyQt6.QtPrintSupport import QPrintPreviewDialog
 
 try:
     from ctypes import windll  # Only exists on Windows.
-    myappid = 'realblack7.productionmanager.v1.0'
+    myappid = 'realblack7.productionmanager.v1.1'
     windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 except ImportError:
     pass
@@ -85,7 +85,7 @@ class AddBatchWindow(QWidget):
         self.listDispo.setText('SP')
         self.listDispo.setValidator(QRegularExpressionValidator(rx, self))
 
-        rx2 = QRegularExpression("3\\d{1}\\.\\d{1,4}") 
+        rx2 = QRegularExpression("3\\d{1}\\.\\d{1,4}\\-\\d{1}") 
         self.listArticle = QComboBox()  
         self.listArticle.addItem('32.')                 
         self.listArticle.addItems(self.attr2)        
@@ -372,13 +372,14 @@ class EditDataWindow(QWidget):
         self.addItem = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'plus-solid.svg')), buttonText + ' hinzufügen  (Strg + A)', self)        
         self.addItem.triggered.connect(lambda: self.editEntry(0))  
         self.addItem.setShortcut("Ctrl+A")
-
-        self.editItem = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'pen-solid.svg')), buttonText + ' ändern  (Strg + E)', self)        
-        self.editItem.triggered.connect(lambda: self.editEntry(1))           
-        self.editItem.setShortcut("Ctrl+E")
-
         self.menubar.addAction(self.addItem)
-        self.menubar.addAction(self.editItem)
+
+        if not self.mode == 2:
+            self.editItem = QAction(QIcon(os.path.join(self.imagePath, 'assets', 'pen-solid.svg')), buttonText + ' ändern  (Strg + E)', self)        
+            self.editItem.triggered.connect(lambda: self.editEntry(1))           
+            self.editItem.setShortcut("Ctrl+E")
+            self.menubar.addAction(self.editItem)
+
 
         layout1 = QVBoxLayout()        
         layout1.setMenuBar(self.menubar)
@@ -704,7 +705,7 @@ class EditDataItemWindow(QWidget):
    
                 case 1:                   
 
-                    rx = QRegularExpression("3\\d{1}\\.\\d{1,4}")
+                    rx = QRegularExpression("3\\d{1}\\.\\d{1,4}\\-\\d{1}")
                     self.articleNo = QLineEdit()
                     self.articleNo.setFixedWidth(200)
                     self.articleNo.setValidator(QRegularExpressionValidator(rx, self)) 
@@ -905,10 +906,15 @@ class EditDataItemWindow(QWidget):
                             emptyConcentrationCheck = False
                             for row in range(10):
                                 if not self.tableAdditives.cellWidget(row, 1).currentText() == '':
+                                    if self.tableAdditives.cellWidget(row, 2).text() == '':                                        
+                                        emptyConcentrationCheck = 1
+                                        break
                                     articleAdditiveDict[self.tableAdditives.cellWidget(row, 1).currentText()] = str([self.tableAdditives.cellWidget(row, 2).text(), str(int(self.tableAdditives.cellWidget(row, 0).isChecked()))])
                                 else:
-                                    emptyConcentrationCheck = True
-                                    break
+                                    if not self.tableAdditives.cellWidget(row, 2).text() == '':
+                                        emptyConcentrationCheck = 2
+                                        break 
+
                             self.editData[5] = articleAdditiveDict  
                             match self.articleWhichExtruder.checkState():
                                 case Qt.CheckState.Unchecked:
@@ -923,11 +929,16 @@ class EditDataItemWindow(QWidget):
                             articleAdditiveDict = {}
                             emptyConcentrationCheck = False
                             for row in range(10):
-                                if not self.tableAdditives.cellWidget(row, 1).currentText() == '' and not self.tableAdditives.cellWidget(row, 2).text() == '':
+                                if not self.tableAdditives.cellWidget(row, 1).currentText() == '':                                    
+                                    if self.tableAdditives.cellWidget(row, 2).text() == '':                                        
+                                        emptyConcentrationCheck = 1
+                                        break
                                     articleAdditiveDict[self.tableAdditives.cellWidget(row, 1).currentText()] = str([self.tableAdditives.cellWidget(row, 2).text(), str(int(self.tableAdditives.cellWidget(row, 0).isChecked()))])
                                 else:
-                                    emptyConcentrationCheck = True
-                                    break
+                                    if not self.tableAdditives.cellWidget(row, 2).text() == '':
+                                        emptyConcentrationCheck = 2
+                                        break                                                                   
+
 
                             self.editData[5] = articleAdditiveDict 
                             match self.articleWhichExtruder.checkState():
@@ -946,7 +957,10 @@ class EditDataItemWindow(QWidget):
                     elif emptyConcentrationCheck:
                         popUpEmptyField = QMessageBox()
                         popUpEmptyField.setWindowTitle("Achtung!")
-                        popUpEmptyField.setText("Bei einem Additiv wurde keine Konzentration angegeben!")
+                        if emptyConcentrationCheck == 1:                            
+                            popUpEmptyField.setText("Bei einem Additiv wurde keine Konzentration angegeben!")
+                        else:
+                            popUpEmptyField.setText("In einer leeren Reihe wurde eine Konzentration angegeben!")
                         popUpEmptyField.exec()
                     else: 
                         self.edited.emit(self.editData)
@@ -1706,7 +1720,7 @@ class MainWindow(QMainWindow):
         
         calendarWeek = productionDate.strftime('%V')
 
-        rx2 = QRegularExpression("3\\d{1}\\.\\d{1,4}")
+        rx2 = QRegularExpression("3\\d{1}\\.\\d{1,4}\\-\\d{1}")
         rx3 = QRegularExpression("1-\\d{1,2}-\\d{1,3}")
         rx4 = QRegularExpression("\\d{1,2}")
 
@@ -1970,7 +1984,7 @@ class MainWindow(QMainWindow):
             otherTable = self.tableBatchesExtruder1 
 
         rx = QRegularExpression("SP\\d{1,9}")
-        rx2 = QRegularExpression("3\\d{1}\\.\\d{1,4}")
+        rx2 = QRegularExpression("3\\d{1}\\.\\d{1,4}\\-\\d{1}")
         rx3 = QRegularExpression("1-\\d{1,2}-\\d{1,3}")
         rx4 = QRegularExpression("\\d{1,2}")
                     
@@ -4262,7 +4276,7 @@ class MainWindow(QMainWindow):
                         whichTable = self.tableBatchesSilo                                   
 
                 rx = QRegularExpression("SP\\d{1,9}")
-                rx2 = QRegularExpression("3\\d{1}\\.\\d{1,4}")
+                rx2 = QRegularExpression("3\\d{1}\\.\\d{1,4}\\-\\d{1}")
                 rx3 = QRegularExpression("1-\\d{1,2}-\\d{1,3}")
                 rx4 = QRegularExpression("\\d{1,2}")
 
@@ -5230,7 +5244,7 @@ class MainWindow(QMainWindow):
                 ws = wb[sheets[sheet]]             
 
                 rx = QRegularExpression("SP\\d{1,9}")
-                rx2 = QRegularExpression("3\\d{1}\\.\\d{1,4}")
+                rx2 = QRegularExpression("3\\d{1}\\.\\d{1,4}\\-\\d{1}")
                 rx3 = QRegularExpression("1-\\d{1,2}-\\d{1,3}")
                 rx4 = QRegularExpression("\\d{1,2}")
                 
