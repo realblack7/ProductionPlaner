@@ -4207,9 +4207,11 @@ class MainWindow(QMainWindow):
 
             rowList.sort(reverse=True) 
             
-            highestBatchNo = rowList[0] + 1               
+            highestBatchNo = rowList[0] + 1   
+                        
                                         
             for row in range(whichTable.rowCount()):
+                changeBatchNo = False
 
                 stringLength = len(whichTable.cellWidget(row, 5).text())
 
@@ -4217,16 +4219,19 @@ class MainWindow(QMainWindow):
                     newBatchNo = whichTable.cellWidget(row, 5).text() + '00' + str(highestBatchNo)
                     whichTable.cellWidget(row, 5).setText(newBatchNo)                         
                     highestBatchNo = highestBatchNo + 1
+                    changeBatchNo = True
                 elif stringLength <= 5 and highestBatchNo < 100:
                     newBatchNo = whichTable.cellWidget(row, 5).text() + '0' + str(highestBatchNo)
                     whichTable.cellWidget(row, 5).setText(newBatchNo)                        
                     highestBatchNo = highestBatchNo + 1
+                    changeBatchNo = True
                 elif stringLength <= 5 and highestBatchNo < 1000:
                     newBatchNo = whichTable.cellWidget(row, 5).text() + str(highestBatchNo)
                     whichTable.cellWidget(row, 5).setText(newBatchNo)                        
-                    highestBatchNo = highestBatchNo + 1   
+                    highestBatchNo = highestBatchNo + 1  
+                    changeBatchNo = True
 
-                if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
+                if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2) and changeBatchNo == True:
 
                     if whichTable.cellWidget(row, 8).currentText() == 'Silo':
                         self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 5).setText(newBatchNo)                      
