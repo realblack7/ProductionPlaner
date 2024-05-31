@@ -35,7 +35,7 @@ from PyQt6.QtPrintSupport import QPrintPreviewDialog
 
 try:
     from ctypes import windll  # Only exists on Windows.
-    myappid = 'realblack7.productionmanager.v1.1'
+    myappid = 'realblack7.productionmanager.v1.2'
     windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 except ImportError:
     pass
@@ -1010,6 +1010,7 @@ class MainWindow(QMainWindow):
         self.w = None
         self.closeMenu = True  
         self.workingOnShiftPlan = False
+        self.changeArticleNoCheck = False
         self.setLoadedFile = False    
         self.dataXLSX = os.path.join(os.path.dirname(__file__), 'data', 'data.xlsx')  
         self.imagePath = os.path.dirname(__file__)
@@ -1552,13 +1553,13 @@ class MainWindow(QMainWindow):
                         self.dictArticleColors[self.articleList[key][1]] = self.articleList[key][2][-5:][:2] 
                         self.articleNoList.append(self.articleList[key][1]) 
                         self.articleExtruderList[self.articleList[key][1]] = self.articleList[key][4]                            
-
+                    
                     if whichTable.rowCount() != 0: 
-
+                        self.changeArticleNoCheck = True
                         for row in range(whichTable.rowCount()): 
-
+                            print(whichTable.rowCount())
                             if table == 0 or table == 1:                                                                       
-                            
+                                
                                 index = whichTable.cellWidget(row, 4).currentIndex()
                                 whichTable.cellWidget(row, 4).clear()
                                 whichTable.cellWidget(row, 4).addItems(self.articleNoList) 
@@ -1566,6 +1567,7 @@ class MainWindow(QMainWindow):
                                     whichIcon = self.colorList[self.dictArticleColors[self.articleNoList[article]]][0]+'.png'               
                                     whichTable.cellWidget(row, 4).setItemIcon(article, QIcon(QIcon(os.path.join(self.imagePath, 'assets', whichIcon))))   
                                 whichTable.cellWidget(row, 4).setCurrentIndex(index)
+                        self.changeArticleNoCheck = False
 
        
         wb = Workbook() 
@@ -2521,197 +2523,201 @@ class MainWindow(QMainWindow):
         self.saveFile.setEnabled(True)
 
     def changeDispoNo(self, table):
-        self.saveFile.setEnabled(True)
-        changedDispo = self.sender()            
-        rowDispo = changedDispo.property('row') 
-        oldDispo = changedDispo.text() 
+        if self.workingOnShiftPlan == False:
+            self.saveFile.setEnabled(True)
+            changedDispo = self.sender()            
+            rowDispo = changedDispo.property('row') 
+            oldDispo = changedDispo.text() 
 
-        if table == 1:            
-            whichTable = self.tableBatchesExtruder1
-        else:           
-            whichTable = self.tableBatchesExtruder2
+            if table == 1:            
+                whichTable = self.tableBatchesExtruder1
+            else:           
+                whichTable = self.tableBatchesExtruder2
 
-        rx = QRegularExpression("SP\\d{1,9}")
-        msgbox = QInputDialog()
-        msgbox.setInputMode(QInputDialog.InputMode.TextInput)
-        msgbox.setWindowTitle('Dispo-Nr. ändern')
-        msgbox.setLabelText('Neue Dispo-Nr.:') 
-        msgbox.setTextValue(oldDispo)    
-        msgbox.setCancelButtonText('Abbrechen')
-        lineedit = msgbox.findChild(QLineEdit)
-        lineedit.setValidator(QRegularExpressionValidator(rx, self))
-        lineedit.setMaxLength(9)
-        #msgbox.exec()
-        
-        if msgbox.exec() and lineedit.text() != '':
-            if lineedit.text() in self.dispoNoList.keys() and lineedit.text() != oldDispo:
-                dispoInUse = QMessageBox()
-                dispoInUse.setWindowTitle("Achtung!")
-                dispoInUse.setText("Dispo-Nr. konnte nicht geändert werden. Die angegebene Dispo-Nr. ist bereits vergeben!")
-                dispoInUse.exec()
-
-            else:
-                changedDispo.setText(lineedit.text())
-                self.dispoNoList.pop(oldDispo)
-                self.dispoNoList[lineedit.text()] = rowDispo
-
-                #table = 1
-
-                if oldDispo in self.checkDispoNoSilo and (table == 1 or table == 2):
-
-                    if whichTable.cellWidget(rowDispo, 8).currentText() == 'Silo':
-                        self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[oldDispo], 6).setText(lineedit.text()) 
-                        self.checkDispoNoSilo[lineedit.text()] = self.checkDispoNoSilo[oldDispo]
-                        self.checkDispoNoSilo.pop(oldDispo)
-                                        
-                    
-                    elif whichTable.cellWidget(rowDispo, 8).currentText() == 'Homogenisierung':
-                        self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[oldDispo], 6).setText(lineedit.text())
-                        self.checkDispoNoSilo[lineedit.text()] = self.checkDispoNoSilo[oldDispo]
-                        self.checkDispoNoSilo.pop(oldDispo) 
-
-    def changeBatchNo(self, table):
-        self.saveFile.setEnabled(True)
-        changedBatch = self.sender()            
-        rowBatch = changedBatch.property('row') 
-        oldBatch = changedBatch.text() 
-
-        if table == 1:            
-            whichTable = self.tableBatchesExtruder1
-            rx = QRegularExpression("1-\\d{1,2}-\\d{1,3}")
-        else:           
-            whichTable = self.tableBatchesExtruder2
-            rx = QRegularExpression("2-\\d{1,2}-\\d{1,3}")
-
-        rowCount =  whichTable.rowCount()
-        batchNoInUse = []
-        for row in range(rowCount):
-            if (not whichTable.cellWidget(row, 5).text() in batchNoInUse) and (not len(batchNoInUse) <= 5):
-                batchNoInUse.append(whichTable.cellWidget(row, 5).text())
-        
-        msgbox = QInputDialog()
-        msgbox.setInputMode(QInputDialog.InputMode.TextInput)
-        msgbox.setWindowTitle('Chargen-Nr. ändern')
-        msgbox.setLabelText('Neue Chargen-Nr.:') 
-        msgbox.setTextValue(oldBatch)    
-        msgbox.setCancelButtonText('Abbrechen')
-        lineedit = msgbox.findChild(QLineEdit)
-        lineedit.setValidator(QRegularExpressionValidator(rx, self))
-        lineedit.setMaxLength(9)
-        #msgbox.exec()
-        
-        if msgbox.exec() and lineedit.text() != '':
-            if lineedit.text() in batchNoInUse and lineedit.text() != oldBatch:
-                dispoInUse = QMessageBox()
-                dispoInUse.setWindowTitle("Achtung!")
-                dispoInUse.setText("Chargen-Nr. konnte nicht geändert werden.\nDie angegebene Chargen-Nr. ist bereits vergeben!")
-                dispoInUse.exec()
-
-            else:
-                changedBatch.setText(lineedit.text())             
-
-                if whichTable.cellWidget(rowBatch, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
-
-                    if whichTable.cellWidget(rowBatch, 8).currentText() == 'Silo':
-                        self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowBatch, 6).text()], 5).setText(lineedit.text())                      
-                                        
-                    
-                    elif whichTable.cellWidget(rowBatch, 8).currentText() == 'Homogenisierung':                        
-                        if table == 1:
-                            newNoHomogenisation = whichTable.cellWidget(rowBatch, 5).text()[-6:] + '.1'
-                            self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowBatch, 6).text()], 5).setText(newNoHomogenisation)
-                        else:
-                            newNoHomogenisation = whichTable.cellWidget(rowBatch, 5).text()[-6:] + '.2'
-                            self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowBatch, 6).text()], 5).setText(newNoHomogenisation)
-
-    def customerChanged(self, table):
-        self.saveFile.setEnabled(True)
-        changedCustomer = self.sender()            
-        rowCustomer = changedCustomer.property('row') 
-
-        if table == 1:            
-            whichTable = self.tableBatchesExtruder1            
-        else:           
-            whichTable = self.tableBatchesExtruder2
-
-        if whichTable.cellWidget(rowCustomer, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
-
-            if whichTable.cellWidget(rowCustomer, 8).currentText() == 'Silo':
-                self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowCustomer, 6).text()], 7).setText(changedCustomer.currentText())                      
-                                
+            rx = QRegularExpression("SP\\d{1,9}")
+            msgbox = QInputDialog()
+            msgbox.setInputMode(QInputDialog.InputMode.TextInput)
+            msgbox.setWindowTitle('Dispo-Nr. ändern')
+            msgbox.setLabelText('Neue Dispo-Nr.:') 
+            msgbox.setTextValue(oldDispo)    
+            msgbox.setCancelButtonText('Abbrechen')
+            lineedit = msgbox.findChild(QLineEdit)
+            lineedit.setValidator(QRegularExpressionValidator(rx, self))
+            lineedit.setMaxLength(9)
+            #msgbox.exec()
             
-            elif whichTable.cellWidget(rowCustomer, 8).currentText() == 'Homogenisierung':                        
-                self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowCustomer, 6).text()], 7).setText(changedCustomer.currentText())
+            if msgbox.exec() and lineedit.text() != '':
+                if lineedit.text() in self.dispoNoList.keys() and lineedit.text() != oldDispo:
+                    dispoInUse = QMessageBox()
+                    dispoInUse.setWindowTitle("Achtung!")
+                    dispoInUse.setText("Dispo-Nr. konnte nicht geändert werden. Die angegebene Dispo-Nr. ist bereits vergeben!")
+                    dispoInUse.exec()
 
-    def articleChanged(self, table):
-        self.saveFile.setEnabled(True)
-        changedArticle = self.sender()            
-        rowArticle = changedArticle.property('row')       
-
-        if table == 1:            
-            whichTable = self.tableBatchesExtruder1            
-        else:           
-            whichTable = self.tableBatchesExtruder2     
-        
-        if whichTable.cellWidget(rowArticle, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
-
-            if whichTable.cellWidget(rowArticle, 8).currentText() == 'Silo':
-                
-                self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).clear()
-                self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).addItem(changedArticle.currentText())
-
-                if whichTable.cellWidget(rowArticle, 4).currentText() in self.articleNoList:                                  
-                                            
-                    whichIcon = self.colorList[self.dictArticleColors[whichTable.cellWidget(rowArticle, 4).currentText()]][0]+'.png'                   
-                    self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).setItemIcon(0, QIcon(QIcon(os.path.join(self.imagePath, 'assets', whichIcon))))                     
-                                
-            
-            elif whichTable.cellWidget(rowArticle, 8).currentText() == 'Homogenisierung':                        
-                self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).clear()
-                self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).addItem(changedArticle.currentText())
-
-                if whichTable.cellWidget(rowArticle, 4).currentText() in self.articleNoList:                                  
-                                            
-                    whichIcon = self.colorList[self.dictArticleColors[whichTable.cellWidget(rowArticle, 4).currentText()]][0]+'.png'                   
-                    self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).setItemIcon(0, QIcon(QIcon(os.path.join(self.imagePath, 'assets', whichIcon)))) 
-
-        if not whichTable.cellWidget(rowArticle, 4).currentText() == '32.' and not whichTable.cellWidget(rowArticle, 4).currentText() == '':
-            if (self.articleExtruderList[whichTable.cellWidget(rowArticle, 4).currentText()] == '1' and table == 1) or (self.articleExtruderList[whichTable.cellWidget(rowArticle, 4).currentText()] == '2' and table == 2):
-
-                invalidArticle = whichTable.cellWidget(rowArticle, 4).currentText()
-                if table == 1:
-                    invalidExtruder = 'Extruder 1'
                 else:
-                    invalidExtruder = 'Extruder 2'
-                messageBox = QMessageBox().warning(self, "Achtung!", "Der Artikel " + invalidArticle + " kann oder darf nicht mit " + invalidExtruder + " produziert werden!\nZum anderen Extruder verschieben?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
-    
-                if messageBox == QMessageBox.StandardButton.Yes:               
+                    changedDispo.setText(lineedit.text())
+                    self.dispoNoList.pop(oldDispo)
+                    self.dispoNoList[lineedit.text()] = rowDispo
 
-                    dispoNo = whichTable.cellWidget(rowArticle, 6).text()                  
-                    if table == 1:
-                        self.moveBatchToExtruder(1)
-                        otherTable = self.tableBatchesExtruder2
-                    else:
-                        self.moveBatchToExtruder(2)
-                        otherTable = self.tableBatchesExtruder1
+                    #table = 1
 
-                    newRow = self.dispoNoList[dispoNo]
+                    if oldDispo in self.checkDispoNoSilo and (table == 1 or table == 2):
 
-                    if otherTable.cellWidget(newRow, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
-
-                        if otherTable.cellWidget(newRow, 8).currentText() == 'Silo':
-                            self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[otherTable.cellWidget(newRow, 6).text()], 5).setText(otherTable.cellWidget(newRow, 5).text())                      
+                        if whichTable.cellWidget(rowDispo, 8).currentText() == 'Silo':
+                            self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[oldDispo], 6).setText(lineedit.text()) 
+                            self.checkDispoNoSilo[lineedit.text()] = self.checkDispoNoSilo[oldDispo]
+                            self.checkDispoNoSilo.pop(oldDispo)
                                             
                         
-                        elif otherTable.cellWidget(newRow, 8).currentText() == 'Homogenisierung':                        
-                            if table == 1:
-                                newNoHomogenisation = otherTable.cellWidget(newRow, 5).text()[-6:] + '.2'
-                                self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[otherTable.cellWidget(newRow, 6).text()], 5).setText(newNoHomogenisation)
-                            else:
-                                newNoHomogenisation = otherTable.cellWidget(newRow, 5).text()[-6:] + '.1'
-                                self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[otherTable.cellWidget(newRow, 6).text()], 5).setText(newNoHomogenisation)
+                        elif whichTable.cellWidget(rowDispo, 8).currentText() == 'Homogenisierung':
+                            self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[oldDispo], 6).setText(lineedit.text())
+                            self.checkDispoNoSilo[lineedit.text()] = self.checkDispoNoSilo[oldDispo]
+                            self.checkDispoNoSilo.pop(oldDispo) 
+
+    def changeBatchNo(self, table):
+        if self.workingOnShiftPlan == False:
+            self.saveFile.setEnabled(True)
+            changedBatch = self.sender()            
+            rowBatch = changedBatch.property('row') 
+            oldBatch = changedBatch.text() 
+
+            if table == 1:            
+                whichTable = self.tableBatchesExtruder1
+                rx = QRegularExpression("1-\\d{1,2}-\\d{1,3}")
+            else:           
+                whichTable = self.tableBatchesExtruder2
+                rx = QRegularExpression("2-\\d{1,2}-\\d{1,3}")
+
+            rowCount =  whichTable.rowCount()
+            batchNoInUse = []
+            for row in range(rowCount):
+                if (not whichTable.cellWidget(row, 5).text() in batchNoInUse) and (not len(batchNoInUse) <= 5):
+                    batchNoInUse.append(whichTable.cellWidget(row, 5).text())
+            
+            msgbox = QInputDialog()
+            msgbox.setInputMode(QInputDialog.InputMode.TextInput)
+            msgbox.setWindowTitle('Chargen-Nr. ändern')
+            msgbox.setLabelText('Neue Chargen-Nr.:') 
+            msgbox.setTextValue(oldBatch)    
+            msgbox.setCancelButtonText('Abbrechen')
+            lineedit = msgbox.findChild(QLineEdit)
+            lineedit.setValidator(QRegularExpressionValidator(rx, self))
+            lineedit.setMaxLength(9)
+            #msgbox.exec()
+            
+            if msgbox.exec() and lineedit.text() != '':
+                if lineedit.text() in batchNoInUse and lineedit.text() != oldBatch:
+                    dispoInUse = QMessageBox()
+                    dispoInUse.setWindowTitle("Achtung!")
+                    dispoInUse.setText("Chargen-Nr. konnte nicht geändert werden.\nDie angegebene Chargen-Nr. ist bereits vergeben!")
+                    dispoInUse.exec()
+
                 else:
-                    return 
+                    changedBatch.setText(lineedit.text())             
+
+                    if whichTable.cellWidget(rowBatch, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
+
+                        if whichTable.cellWidget(rowBatch, 8).currentText() == 'Silo':
+                            self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowBatch, 6).text()], 5).setText(lineedit.text())                      
+                                            
+                        
+                        elif whichTable.cellWidget(rowBatch, 8).currentText() == 'Homogenisierung':                        
+                            if table == 1:
+                                newNoHomogenisation = whichTable.cellWidget(rowBatch, 5).text()[-6:] + '.1'
+                                self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowBatch, 6).text()], 5).setText(newNoHomogenisation)
+                            else:
+                                newNoHomogenisation = whichTable.cellWidget(rowBatch, 5).text()[-6:] + '.2'
+                                self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowBatch, 6).text()], 5).setText(newNoHomogenisation)
+
+    def customerChanged(self, table):
+        if self.workingOnShiftPlan == False:
+            self.saveFile.setEnabled(True)
+            changedCustomer = self.sender()            
+            rowCustomer = changedCustomer.property('row') 
+
+            if table == 1:            
+                whichTable = self.tableBatchesExtruder1            
+            else:           
+                whichTable = self.tableBatchesExtruder2
+
+            if whichTable.cellWidget(rowCustomer, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
+
+                if whichTable.cellWidget(rowCustomer, 8).currentText() == 'Silo':
+                    self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowCustomer, 6).text()], 7).setText(changedCustomer.currentText())                      
+                                    
+                
+                elif whichTable.cellWidget(rowCustomer, 8).currentText() == 'Homogenisierung':                        
+                    self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowCustomer, 6).text()], 7).setText(changedCustomer.currentText())
+
+    def articleChanged(self, table):
+        if self.workingOnShiftPlan == False and self.changeArticleNoCheck == False:
+            self.saveFile.setEnabled(True)
+            changedArticle = self.sender()            
+            rowArticle = changedArticle.property('row')       
+
+            if table == 1:            
+                whichTable = self.tableBatchesExtruder1            
+            else:           
+                whichTable = self.tableBatchesExtruder2     
+            
+            if whichTable.cellWidget(rowArticle, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
+
+                if whichTable.cellWidget(rowArticle, 8).currentText() == 'Silo':
+                    
+                    self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).clear()
+                    self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).addItem(changedArticle.currentText())
+
+                    if whichTable.cellWidget(rowArticle, 4).currentText() in self.articleNoList:                                  
+                                                
+                        whichIcon = self.colorList[self.dictArticleColors[whichTable.cellWidget(rowArticle, 4).currentText()]][0]+'.png'                   
+                        self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).setItemIcon(0, QIcon(QIcon(os.path.join(self.imagePath, 'assets', whichIcon))))                     
+                                    
+                
+                elif whichTable.cellWidget(rowArticle, 8).currentText() == 'Homogenisierung':                        
+                    self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).clear()
+                    self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).addItem(changedArticle.currentText())
+
+                    if whichTable.cellWidget(rowArticle, 4).currentText() in self.articleNoList:                                  
+                                                
+                        whichIcon = self.colorList[self.dictArticleColors[whichTable.cellWidget(rowArticle, 4).currentText()]][0]+'.png'                   
+                        self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowArticle, 6).text()], 4).setItemIcon(0, QIcon(QIcon(os.path.join(self.imagePath, 'assets', whichIcon)))) 
+
+            if not whichTable.cellWidget(rowArticle, 4).currentText() == '32.' and not whichTable.cellWidget(rowArticle, 4).currentText() == '':
+                if (self.articleExtruderList[whichTable.cellWidget(rowArticle, 4).currentText()] == '1' and table == 1) or (self.articleExtruderList[whichTable.cellWidget(rowArticle, 4).currentText()] == '2' and table == 2):
+
+                    invalidArticle = whichTable.cellWidget(rowArticle, 4).currentText()
+                    if table == 1:
+                        invalidExtruder = 'Extruder 1'
+                    else:
+                        invalidExtruder = 'Extruder 2'
+                    messageBox = QMessageBox().warning(self, "Achtung!", "Der Artikel " + invalidArticle + " kann oder darf nicht mit " + invalidExtruder + " produziert werden!\nZum anderen Extruder verschieben?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
+        
+                    if messageBox == QMessageBox.StandardButton.Yes:               
+
+                        dispoNo = whichTable.cellWidget(rowArticle, 6).text()                  
+                        if table == 1:                            
+                            self.moveBatchToExtruder(1)
+                            otherTable = self.tableBatchesExtruder2
+                        else:                            
+                            self.moveBatchToExtruder(2)
+                            otherTable = self.tableBatchesExtruder1
+
+                        newRow = self.dispoNoList[dispoNo]
+
+                        if otherTable.cellWidget(newRow, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
+
+                            if otherTable.cellWidget(newRow, 8).currentText() == 'Silo':
+                                self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[otherTable.cellWidget(newRow, 6).text()], 5).setText(otherTable.cellWidget(newRow, 5).text())                      
+                                                
+                            
+                            elif otherTable.cellWidget(newRow, 8).currentText() == 'Homogenisierung':                        
+                                if table == 1:
+                                    newNoHomogenisation = otherTable.cellWidget(newRow, 5).text()[-6:] + '.2'
+                                    self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[otherTable.cellWidget(newRow, 6).text()], 5).setText(newNoHomogenisation)
+                                else:
+                                    newNoHomogenisation = otherTable.cellWidget(newRow, 5).text()[-6:] + '.1'
+                                    self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[otherTable.cellWidget(newRow, 6).text()], 5).setText(newNoHomogenisation)
+                    else:
+                        return 
                     
     def shiftChanged(self, table): 
         if self.workingOnShiftPlan == False: 
@@ -2881,97 +2887,20 @@ class MainWindow(QMainWindow):
         self.tableBatchesExtruder1.blockSignals(False)
         self.tableBatchesExtruder2.blockSignals(False) 
    
-    def packagingChanged(self, table):        
+    def packagingChanged(self, table):
+        if self.workingOnShiftPlan == False:        
                 
-        self.saveFile.setEnabled(True)  
+            self.saveFile.setEnabled(True)  
 
-        changedPackaging = self.sender()            
-        row = changedPackaging.property('row') 
-        selectedPackaging = changedPackaging.currentText() 
+            changedPackaging = self.sender()            
+            row = changedPackaging.property('row') 
+            selectedPackaging = changedPackaging.currentText() 
 
-        if selectedPackaging == 'Homogenisierung': 
-            if table == 1:            
-                whichTable = self.tableBatchesExtruder1
-                
-                if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
-                    try:
-                        self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                                
-                    except:                                             
-                        return
-                    else:
-                        if self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
-                            otherTable = self.tableBatchesHomogenisation
-                            silo = 1
-                                                 
-                        else:                            
-                            return
-                else:
-                    self.generateSiloLists()
-                    self.sortExtruderbyDeliveryDateButton(3)
-                    return
-            else:           
-                whichTable = self.tableBatchesExtruder2
-                if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
-                    try:
-                        self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                      
-                    except:
-                        return
-                    else:
-                        if self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
-                            otherTable = self.tableBatchesHomogenisation
-                            silo = 1                            
-                        else:
-                            return
-                else:
-                    self.generateSiloLists()
-                    self.sortExtruderbyDeliveryDateButton(3)
-                    return
-
-        elif selectedPackaging == 'Silo':   
-
-            if table == 1:            
-                whichTable = self.tableBatchesExtruder1
-                if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
-                    try:
-                        self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                
-                    except:
-                        return
-                    else:
-                        if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
-                            otherTable = self.tableBatchesSilo
-                            silo = 0                            
-                        else:
-                            return
-                else:
-                    self.generateSiloLists()
-                    self.sortExtruderbyDeliveryDateButton(4)
-                    return
-            else:           
-                whichTable = self.tableBatchesExtruder2
-                if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
-                    try:
-                        self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                      
-                    except:
-                        return
-                    else:
-                        if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
-                            otherTable = self.tableBatchesSilo                            
-                            silo = 0
-                        else:
-                            return
-                else:
-                    self.generateSiloLists()
-                    self.sortExtruderbyDeliveryDateButton(4)
-                    return
-                        
-        elif selectedPackaging == 'Bigbag':   
-
-            if table == 1:            
-                whichTable = self.tableBatchesExtruder1
-                if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
-                    try:
-                        self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                
-                    except:
+            if selectedPackaging == 'Homogenisierung': 
+                if table == 1:            
+                    whichTable = self.tableBatchesExtruder1
+                    
+                    if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
                         try:
                             self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                                
                         except:                                             
@@ -2979,412 +2908,491 @@ class MainWindow(QMainWindow):
                         else:
                             if self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
                                 otherTable = self.tableBatchesHomogenisation
-                                silo = 2
+                                silo = 1
+                                                    
+                            else:                            
+                                return
                     else:
-                        if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():                            
-                            silo = 3                            
-                        else:
-                            return
-                else:
-                    return
-            else:           
-                whichTable = self.tableBatchesExtruder2
-                if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
-                    try:
-                        self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                      
-                    except:
+                        self.generateSiloLists()
+                        self.sortExtruderbyDeliveryDateButton(3)
+                        return
+                else:           
+                    whichTable = self.tableBatchesExtruder2
+                    if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
                         try:
-                            self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                                
-                        except:                                             
+                            self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                      
+                        except:
                             return
                         else:
                             if self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
                                 otherTable = self.tableBatchesHomogenisation
-                                silo = 2
+                                silo = 1                            
+                            else:
+                                return
                     else:
-                        if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():                            
-                            silo = 3                            
-                        else:
-                            return
-                else:
-                    return
-        elif selectedPackaging == 'Oktabin':   
+                        self.generateSiloLists()
+                        self.sortExtruderbyDeliveryDateButton(3)
+                        return
 
-            if table == 1:            
-                whichTable = self.tableBatchesExtruder1
-                if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
-                    try:
-                        self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                
-                    except:
+            elif selectedPackaging == 'Silo':   
+
+                if table == 1:            
+                    whichTable = self.tableBatchesExtruder1
+                    if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
                         try:
-                            self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                                
-                        except:                                             
+                            self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                
+                        except:
                             return
                         else:
-                            if self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
-                                otherTable = self.tableBatchesHomogenisation
-                                silo = 4
+                            if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
+                                otherTable = self.tableBatchesSilo
+                                silo = 0                            
+                            else:
+                                return
                     else:
-                        if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():                            
-                            silo = 5                            
-                        else:
-                            return
-                else:
-                    return
-            else:           
-                whichTable = self.tableBatchesExtruder2
-                if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
-                    try:
-                        self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                      
-                    except:
+                        self.generateSiloLists()
+                        self.sortExtruderbyDeliveryDateButton(4)
+                        return
+                else:           
+                    whichTable = self.tableBatchesExtruder2
+                    if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
                         try:
-                            self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                                
-                        except:                                             
+                            self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                      
+                        except:
                             return
                         else:
-                            if self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
-                                otherTable = self.tableBatchesHomogenisation
-                                silo = 4
+                            if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
+                                otherTable = self.tableBatchesSilo                            
+                                silo = 0
+                            else:
+                                return
                     else:
-                        if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():                            
-                            silo = 5                            
+                        self.generateSiloLists()
+                        self.sortExtruderbyDeliveryDateButton(4)
+                        return
+                            
+            elif selectedPackaging == 'Bigbag':   
+
+                if table == 1:            
+                    whichTable = self.tableBatchesExtruder1
+                    if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
+                        try:
+                            self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                
+                        except:
+                            try:
+                                self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                                
+                            except:                                             
+                                return
+                            else:
+                                if self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
+                                    otherTable = self.tableBatchesHomogenisation
+                                    silo = 2
                         else:
-                            return
-                else:
-                    return                 
-        else:
-            return 
-                       
-        if (silo == 1 and selectedPackaging == 'Homogenisierung'):
+                            if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():                            
+                                silo = 3                            
+                            else:
+                                return
+                    else:
+                        return
+                else:           
+                    whichTable = self.tableBatchesExtruder2
+                    if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
+                        try:
+                            self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                      
+                        except:
+                            try:
+                                self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                                
+                            except:                                             
+                                return
+                            else:
+                                if self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
+                                    otherTable = self.tableBatchesHomogenisation
+                                    silo = 2
+                        else:
+                            if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():                            
+                                silo = 3                            
+                            else:
+                                return
+                    else:
+                        return
+            elif selectedPackaging == 'Oktabin':   
 
-            dispoNo = whichTable.cellWidget(row, 4).currentText() 
-
-            messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " ist aktuell eine Siloabholung.\nSoll sie stattdessen homogenisiert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
-    
-            if not messageBox == QMessageBox.StandardButton.Yes:                
-                return
-            
-        if (silo == 0 and selectedPackaging == 'Silo'):                   
-            dispoNo = whichTable.cellWidget(row, 4).currentText() 
-
-            messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " wird aktuell homogenisiert.\nSoll sie stattdessen siliert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
-    
-            if not messageBox == QMessageBox.StandardButton.Yes:                
-                return 
-             
-        if (silo == 2 and selectedPackaging == 'Bigbag'):                   
-            dispoNo = whichTable.cellWidget(row, 4).currentText() 
-
-            messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " ist aktuell eine Siloabholung.\nSoll sie stattdessen im Bigbag ausgeliefert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
-    
-            if messageBox == QMessageBox.StandardButton.Yes: 
-                self.tableBatchesSilo.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()])  
-                self.checkDispoNoSilo.pop(whichTable.cellWidget(row, 6).text())      
-
-                for row in range(self.tableBatchesSilo.rowCount()):
-                    self.tableBatchesSilo.cellWidget(row, 1).setProperty('row', row) 
-                    self.tableBatchesSilo.cellWidget(row, 2).setProperty('row', row)           
-                    self.tableBatchesSilo.cellWidget(row, 3).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 4).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 5).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 6).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 7).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 8).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 9).setProperty('row', row) 
-                    self.tableBatchesSilo.cellWidget(row, 10).setProperty('row', row)  
-                    self.tableBatchesSilo.cellWidget(row, 11).setProperty('row', row)            
-                    self.checkDispoNoSilo[self.tableBatchesSilo.cellWidget(row, 6).text()] = row             
-                return
+                if table == 1:            
+                    whichTable = self.tableBatchesExtruder1
+                    if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
+                        try:
+                            self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                
+                        except:
+                            try:
+                                self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                                
+                            except:                                             
+                                return
+                            else:
+                                if self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
+                                    otherTable = self.tableBatchesHomogenisation
+                                    silo = 4
+                        else:
+                            if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():                            
+                                silo = 5                            
+                            else:
+                                return
+                    else:
+                        return
+                else:           
+                    whichTable = self.tableBatchesExtruder2
+                    if whichTable.cellWidget(row, 6).text() in self.checkDispoNoSilo:
+                        try:
+                            self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                      
+                        except:
+                            try:
+                                self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text()                                
+                            except:                                             
+                                return
+                            else:
+                                if self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():
+                                    otherTable = self.tableBatchesHomogenisation
+                                    silo = 4
+                        else:
+                            if self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()], 6).text() == whichTable.cellWidget(row, 6).text():                            
+                                silo = 5                            
+                            else:
+                                return
+                    else:
+                        return                 
             else:
                 return 
-            
-        if (silo == 3 and selectedPackaging == 'Bigbag'):                   
-            dispoNo = whichTable.cellWidget(row, 4).currentText() 
-
-            messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " wird aktuell homogenisiert.\nSoll sie stattdessen im Bigbag ausgeliefert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
-    
-            if messageBox == QMessageBox.StandardButton.Yes: 
-                self.tableBatchesHomogenisation.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()])             
-                self.checkDispoNoSilo.pop(whichTable.cellWidget(row, 6).text()) 
-
-                for row in range(self.tableBatchesHomogenisation.rowCount()):                    
-                    self.tableBatchesHomogenisation.cellWidget(row, 1).setProperty('row', row) 
-                    self.tableBatchesHomogenisation.cellWidget(row, 2).setProperty('row', row)           
-                    self.tableBatchesHomogenisation.cellWidget(row, 3).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 4).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 5).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 6).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 7).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 8).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 9).setProperty('row', row) 
-                    self.tableBatchesHomogenisation.cellWidget(row, 10).setProperty('row', row) 
-                    self.tableBatchesHomogenisation.cellWidget(row, 11).setProperty('row', row)           
-                    self.checkDispoNoSilo[self.tableBatchesHomogenisation.cellWidget(row, 6).text()] = row          
-                return
-            else:
-                return
-        if (silo == 4 and selectedPackaging == 'Oktabin'):                   
-            dispoNo = whichTable.cellWidget(row, 4).currentText() 
-
-            messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " ist aktuell eine Siloabholung.\nSoll sie stattdessen im Oktabin ausgeliefert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
-    
-            if messageBox == QMessageBox.StandardButton.Yes: 
-                self.tableBatchesSilo.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()])  
-                self.checkDispoNoSilo.pop(whichTable.cellWidget(row, 6).text())      
-
-                for row in range(self.tableBatchesSilo.rowCount()):
-                    self.tableBatchesSilo.cellWidget(row, 1).setProperty('row', row) 
-                    self.tableBatchesSilo.cellWidget(row, 2).setProperty('row', row)           
-                    self.tableBatchesSilo.cellWidget(row, 3).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 4).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 5).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 6).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 7).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 8).setProperty('row', row)
-                    self.tableBatchesSilo.cellWidget(row, 9).setProperty('row', row) 
-                    self.tableBatchesSilo.cellWidget(row, 10).setProperty('row', row) 
-                    self.tableBatchesSilo.cellWidget(row, 11).setProperty('row', row)            
-                    self.checkDispoNoSilo[self.tableBatchesSilo.cellWidget(row, 6).text()] = row             
-                return
-            else:
-                return 
-            
-        if (silo == 5 and selectedPackaging == 'Oktabin'):                   
-            dispoNo = whichTable.cellWidget(row, 4).currentText() 
-
-            messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " wird aktuell homogenisiert.\nSoll sie stattdessen im Oktabin ausgeliefert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
-    
-            if messageBox == QMessageBox.StandardButton.Yes: 
-                self.tableBatchesHomogenisation.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()])             
-                self.checkDispoNoSilo.pop(whichTable.cellWidget(row, 6).text()) 
-
-                for row in range(self.tableBatchesHomogenisation.rowCount()):                    
-                    self.tableBatchesHomogenisation.cellWidget(row, 1).setProperty('row', row) 
-                    self.tableBatchesHomogenisation.cellWidget(row, 2).setProperty('row', row)           
-                    self.tableBatchesHomogenisation.cellWidget(row, 3).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 4).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 5).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 6).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 7).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 8).setProperty('row', row)
-                    self.tableBatchesHomogenisation.cellWidget(row, 9).setProperty('row', row) 
-                    self.tableBatchesHomogenisation.cellWidget(row, 10).setProperty('row', row)  
-                    self.tableBatchesHomogenisation.cellWidget(row, 11).setProperty('row', row)          
-                    self.checkDispoNoSilo[self.tableBatchesHomogenisation.cellWidget(row, 6).text()] = row          
-                return
-            else:
-                return
-                
-        rowPosition = otherTable.rowCount()
-        otherTable.insertRow(rowPosition)                       
-
-        attrSiloDelivery = ['Silo', 'Dino'] 
-
-        rowItem = 0
-        for rowItem in range(14):             
-            match rowItem:                    
-                case 0:                    
-                    whichCalendarWeek = QLabel()
-                    whichCalendarWeek.setText(whichTable.cellWidget(row, rowItem).text())
-                    whichCalendarWeek.setFixedWidth(40)
-                    whichCalendarWeek.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    otherTable.setCellWidget(rowPosition, rowItem, whichCalendarWeek)
-
-                case 1:                                            
-                    whichShift = QComboBox()
-                    whichShift.addItems(self.attrShift)
-                    whichShift.setCurrentIndex(0)
-                    if silo == 0:
-                        whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(4))
-                    else:
-                        whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(3))                                              
-                    otherTable.setCellWidget(rowPosition, rowItem, whichShift)                       
-
-                case 2:                                  
-                    buttonProductionDate = QDateEdit()
-                    buttonProductionDate.setFixedWidth(80)
-                    buttonProductionDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(row, rowItem+1).text(), '%d.%m.%Y'))                     
-                    if silo == 0:       
-                        buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(4)) 
-                    else: 
-                        buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(3))                                            
-                    otherTable.setCellWidget(rowPosition, rowItem, buttonProductionDate) 
-
-                case 3:                                  
-                    buttonProductionDate = QDateEdit()
-                    buttonProductionDate.setFixedWidth(80)
-                    buttonProductionDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(row, rowItem).text(), '%d.%m.%Y'))                    
-                    if silo == 0:       
-                        buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(4)) 
-                    else: 
-                        buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(3))               
-                    otherTable.setCellWidget(rowPosition, rowItem, buttonProductionDate)                            
-
-                case 4:                                
-                    whichArticle = QComboBox()  
-                    whichArticle.addItem(whichTable.cellWidget(row, rowItem).currentText())                                      
-                    whichArticle.setCurrentText(whichTable.cellWidget(row, rowItem).currentText())                                   
-                    if whichTable.cellWidget(row, rowItem).currentText() in self.articleNoList:                                    
                         
-                        whichIcon = self.colorList[self.dictArticleColors[whichTable.cellWidget(row, rowItem).currentText()]][0]+'.png'                   
-                        whichArticle.setItemIcon(0, QIcon(QIcon(os.path.join(self.imagePath, 'assets', whichIcon))))
-                   
-                    otherTable.setCellWidget(rowPosition, rowItem, whichArticle)
-                    
-                case 5:                                         
-                    newBatchNo = QLabel()
-                    if silo == 0:
-                        newBatchNo.setText(whichTable.cellWidget(row, rowItem).text()) 
-                    else:
-                        if table == 1:
-                            newNoHomogenisation = whichTable.cellWidget(row, rowItem).text()[-6:] + '.1'
-                            newBatchNo.setText(str(newNoHomogenisation)) 
-                        else:
-                            newNoHomogenisation = whichTable.cellWidget(row, rowItem).text()[-6:] + '.2'
-                            newBatchNo.setText(str(newNoHomogenisation))
-                    newBatchNo.setFixedWidth(100)
-                    otherTable.setCellWidget(rowPosition, rowItem, newBatchNo) 
+            if (silo == 1 and selectedPackaging == 'Homogenisierung'):
 
-                case 6:                                         
-                    newDispo = QLabel()
-                    newDispo.setText(whichTable.cellWidget(row, rowItem).text())
-                    newDispo.setFixedWidth(100)
-                    otherTable.setCellWidget(rowPosition, rowItem, newDispo)    
+                dispoNo = whichTable.cellWidget(row, 4).currentText() 
 
-                case 7:                                
-                    whichCustomer = QLabel()                                                                        
-                    whichCustomer.setText(whichTable.cellWidget(row, rowItem).currentText())                                  
-                    otherTable.setCellWidget(rowPosition, rowItem, whichCustomer) 
-
-                case 8: 
-                    if silo == 0:
-                        whichPackaging = QComboBox()
-                        whichPackaging.addItems(attrSiloDelivery)  
-                        whichPackaging.setCurrentIndex(0)                                      
-                    else:
-                        whichPackaging = QLabel()
-                        whichPackaging.setText('Homogenisierung')
-                    
-                    #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
-                    otherTable.setCellWidget(rowPosition, rowItem, whichPackaging)      
-
-                case 9:               
-                    whichLab = QLabel()                                        
-                    whichLab.setText(whichTable.cellWidget(row, rowItem).currentText())
-                    whichLab.setFixedWidth(80)                                                              
-                    otherTable.setCellWidget(rowPosition, rowItem, whichLab)                           
-                        
-                case 10:                                  
-                    buttonDeliveryDate = QDateEdit()
-                    buttonDeliveryDate.setFixedWidth(80)
-                    buttonDeliveryDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(row, rowItem).text(), '%d.%m.%Y')) 
-                    if silo == 0:       
-                        buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(4)) 
-                    else: 
-                        buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(3))        
-                    buttonDeliveryDate.setDisabled(True)       
-                    otherTable.setCellWidget(rowPosition, rowItem, buttonDeliveryDate)
-
-                case 11:
-                    whichBatchSize = QLabel()
-                    whichBatchSize.setText(whichTable.cellWidget(row, rowItem).text())
-                    whichBatchSize.setEnabled(True)
-                    whichBatchSize.setFixedWidth(38)
-                    whichBatchSize.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    otherTable.setCellWidget(rowPosition, rowItem, whichBatchSize)
-
-                case 12:
-                    whichDeliveryDate = QLabel()
-                    whichDeliveryDate.setText(whichTable.cellWidget(row, rowItem).text())                                        
-                    whichDeliveryDate.setFixedWidth(38)
-                    whichDeliveryDate.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    otherTable.setCellWidget(rowPosition, rowItem, whichDeliveryDate) 
-                    
-                    newTimeToDelivery = int(otherTable.cellWidget(rowPosition, rowItem).text() ) 
-
-                    whichActualLab = 0
-                    match otherTable.cellWidget(rowPosition, 9).text():
-                        case 'Dichte':
-                            whichActualLab = 1 
-                        case 'Mechanik':
-                            whichActualLab = 2 
-                        case 'REACh':
-                            whichActualLab = 3 
-
-                    if whichActualLab == 1 and newTimeToDelivery < self.timeDensity:            
-                        otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red')
-                    elif whichActualLab == 2 and newTimeToDelivery < self.timeMechanics:            
-                        otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red') 
-                    elif whichActualLab == 3 and newTimeToDelivery < self.timeReach:            
-                        otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red') 
-                    elif newTimeToDelivery < self.timeNormal:            
-                        otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red')       
-                    else:
-                        otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: white')    
-
-                    if otherTable.cellWidget(rowPosition, 3).date().toString('yyyy.MM.dd') <= datetime.datetime.now().strftime('%Y.%m.%d'):             
-                        otherTable.cellWidget(rowPosition, 3).setStyleSheet('background-color: red')
-                    else:
-                        otherTable.cellWidget(rowPosition, 3).setStyleSheet('background-color: white')                    
-                    
-                case 13:
-                    whichComment = QLineEdit() 
-                    whichComment.setText(whichTable.cellWidget(row, rowItem).text())
-                    whichComment.setFixedWidth(350)
-                    otherTable.setCellWidget(rowPosition, rowItem, whichComment)          
+                messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " ist aktuell eine Siloabholung.\nSoll sie stattdessen homogenisiert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
         
-        if silo == 1:
-            self.tableBatchesSilo.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()])  
-            self.sortExtruderbyDeliveryDateButton(3)             
-        else:
-            self.tableBatchesHomogenisation.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()]) 
-            self.sortExtruderbyDeliveryDateButton(4)   
+                if not messageBox == QMessageBox.StandardButton.Yes:                
+                    return
+                
+            if (silo == 0 and selectedPackaging == 'Silo'):                   
+                dispoNo = whichTable.cellWidget(row, 4).currentText() 
+
+                messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " wird aktuell homogenisiert.\nSoll sie stattdessen siliert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
         
-        for row in range(self.tableBatchesHomogenisation.rowCount()):                    
-            self.tableBatchesHomogenisation.cellWidget(row, 1).setProperty('row', row) 
-            self.tableBatchesHomogenisation.cellWidget(row, 2).setProperty('row', row)           
-            self.tableBatchesHomogenisation.cellWidget(row, 3).setProperty('row', row)
-            self.tableBatchesHomogenisation.cellWidget(row, 4).setProperty('row', row)
-            self.tableBatchesHomogenisation.cellWidget(row, 5).setProperty('row', row)
-            self.tableBatchesHomogenisation.cellWidget(row, 6).setProperty('row', row)
-            self.tableBatchesHomogenisation.cellWidget(row, 7).setProperty('row', row)
-            self.tableBatchesHomogenisation.cellWidget(row, 8).setProperty('row', row)
-            self.tableBatchesHomogenisation.cellWidget(row, 9).setProperty('row', row) 
-            self.tableBatchesHomogenisation.cellWidget(row, 10).setProperty('row', row) 
-            self.tableBatchesHomogenisation.cellWidget(row, 11).setProperty('row', row)            
-            self.checkDispoNoSilo[self.tableBatchesHomogenisation.cellWidget(row, 6).text()] = row
-        for row in range(self.tableBatchesSilo.rowCount()):
-            self.tableBatchesSilo.cellWidget(row, 1).setProperty('row', row) 
-            self.tableBatchesSilo.cellWidget(row, 2).setProperty('row', row)           
-            self.tableBatchesSilo.cellWidget(row, 3).setProperty('row', row)
-            self.tableBatchesSilo.cellWidget(row, 4).setProperty('row', row)
-            self.tableBatchesSilo.cellWidget(row, 5).setProperty('row', row)
-            self.tableBatchesSilo.cellWidget(row, 6).setProperty('row', row)
-            self.tableBatchesSilo.cellWidget(row, 7).setProperty('row', row)
-            self.tableBatchesSilo.cellWidget(row, 8).setProperty('row', row)
-            self.tableBatchesSilo.cellWidget(row, 9).setProperty('row', row) 
-            self.tableBatchesSilo.cellWidget(row, 10).setProperty('row', row)   
-            self.tableBatchesSilo.cellWidget(row, 11).setProperty('row', row)          
-            self.checkDispoNoSilo[self.tableBatchesSilo.cellWidget(row, 6).text()] = row  
+                if not messageBox == QMessageBox.StandardButton.Yes:                
+                    return 
+                
+            if (silo == 2 and selectedPackaging == 'Bigbag'):                   
+                dispoNo = whichTable.cellWidget(row, 4).currentText() 
+
+                messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " ist aktuell eine Siloabholung.\nSoll sie stattdessen im Bigbag ausgeliefert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
+        
+                if messageBox == QMessageBox.StandardButton.Yes: 
+                    self.tableBatchesSilo.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()])  
+                    self.checkDispoNoSilo.pop(whichTable.cellWidget(row, 6).text())      
+
+                    for row in range(self.tableBatchesSilo.rowCount()):
+                        self.tableBatchesSilo.cellWidget(row, 1).setProperty('row', row) 
+                        self.tableBatchesSilo.cellWidget(row, 2).setProperty('row', row)           
+                        self.tableBatchesSilo.cellWidget(row, 3).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 4).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 5).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 6).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 7).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 8).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 9).setProperty('row', row) 
+                        self.tableBatchesSilo.cellWidget(row, 10).setProperty('row', row)  
+                        self.tableBatchesSilo.cellWidget(row, 11).setProperty('row', row)            
+                        self.checkDispoNoSilo[self.tableBatchesSilo.cellWidget(row, 6).text()] = row             
+                    return
+                else:
+                    return 
+                
+            if (silo == 3 and selectedPackaging == 'Bigbag'):                   
+                dispoNo = whichTable.cellWidget(row, 4).currentText() 
+
+                messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " wird aktuell homogenisiert.\nSoll sie stattdessen im Bigbag ausgeliefert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
+        
+                if messageBox == QMessageBox.StandardButton.Yes: 
+                    self.tableBatchesHomogenisation.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()])             
+                    self.checkDispoNoSilo.pop(whichTable.cellWidget(row, 6).text()) 
+
+                    for row in range(self.tableBatchesHomogenisation.rowCount()):                    
+                        self.tableBatchesHomogenisation.cellWidget(row, 1).setProperty('row', row) 
+                        self.tableBatchesHomogenisation.cellWidget(row, 2).setProperty('row', row)           
+                        self.tableBatchesHomogenisation.cellWidget(row, 3).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 4).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 5).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 6).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 7).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 8).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 9).setProperty('row', row) 
+                        self.tableBatchesHomogenisation.cellWidget(row, 10).setProperty('row', row) 
+                        self.tableBatchesHomogenisation.cellWidget(row, 11).setProperty('row', row)           
+                        self.checkDispoNoSilo[self.tableBatchesHomogenisation.cellWidget(row, 6).text()] = row          
+                    return
+                else:
+                    return
+            if (silo == 4 and selectedPackaging == 'Oktabin'):                   
+                dispoNo = whichTable.cellWidget(row, 4).currentText() 
+
+                messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " ist aktuell eine Siloabholung.\nSoll sie stattdessen im Oktabin ausgeliefert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
+        
+                if messageBox == QMessageBox.StandardButton.Yes: 
+                    self.tableBatchesSilo.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()])  
+                    self.checkDispoNoSilo.pop(whichTable.cellWidget(row, 6).text())      
+
+                    for row in range(self.tableBatchesSilo.rowCount()):
+                        self.tableBatchesSilo.cellWidget(row, 1).setProperty('row', row) 
+                        self.tableBatchesSilo.cellWidget(row, 2).setProperty('row', row)           
+                        self.tableBatchesSilo.cellWidget(row, 3).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 4).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 5).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 6).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 7).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 8).setProperty('row', row)
+                        self.tableBatchesSilo.cellWidget(row, 9).setProperty('row', row) 
+                        self.tableBatchesSilo.cellWidget(row, 10).setProperty('row', row) 
+                        self.tableBatchesSilo.cellWidget(row, 11).setProperty('row', row)            
+                        self.checkDispoNoSilo[self.tableBatchesSilo.cellWidget(row, 6).text()] = row             
+                    return
+                else:
+                    return 
+                
+            if (silo == 5 and selectedPackaging == 'Oktabin'):                   
+                dispoNo = whichTable.cellWidget(row, 4).currentText() 
+
+                messageBox = QMessageBox().warning(self, "Silo geändert!", "Die Charge " + dispoNo + " wird aktuell homogenisiert.\nSoll sie stattdessen im Oktabin ausgeliefert werden?", buttons=QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)        
+        
+                if messageBox == QMessageBox.StandardButton.Yes: 
+                    self.tableBatchesHomogenisation.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()])             
+                    self.checkDispoNoSilo.pop(whichTable.cellWidget(row, 6).text()) 
+
+                    for row in range(self.tableBatchesHomogenisation.rowCount()):                    
+                        self.tableBatchesHomogenisation.cellWidget(row, 1).setProperty('row', row) 
+                        self.tableBatchesHomogenisation.cellWidget(row, 2).setProperty('row', row)           
+                        self.tableBatchesHomogenisation.cellWidget(row, 3).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 4).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 5).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 6).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 7).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 8).setProperty('row', row)
+                        self.tableBatchesHomogenisation.cellWidget(row, 9).setProperty('row', row) 
+                        self.tableBatchesHomogenisation.cellWidget(row, 10).setProperty('row', row)  
+                        self.tableBatchesHomogenisation.cellWidget(row, 11).setProperty('row', row)          
+                        self.checkDispoNoSilo[self.tableBatchesHomogenisation.cellWidget(row, 6).text()] = row          
+                    return
+                else:
+                    return
+                    
+            rowPosition = otherTable.rowCount()
+            otherTable.insertRow(rowPosition)                       
+
+            attrSiloDelivery = ['Silo', 'Dino'] 
+
+            rowItem = 0
+            for rowItem in range(14):             
+                match rowItem:                    
+                    case 0:                    
+                        whichCalendarWeek = QLabel()
+                        whichCalendarWeek.setText(whichTable.cellWidget(row, rowItem).text())
+                        whichCalendarWeek.setFixedWidth(40)
+                        whichCalendarWeek.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        otherTable.setCellWidget(rowPosition, rowItem, whichCalendarWeek)
+
+                    case 1:                                            
+                        whichShift = QComboBox()
+                        whichShift.addItems(self.attrShift)
+                        whichShift.setCurrentIndex(0)
+                        if silo == 0:
+                            whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(4))
+                        else:
+                            whichShift.currentIndexChanged.connect(lambda: self.shiftChanged(3))                                              
+                        otherTable.setCellWidget(rowPosition, rowItem, whichShift)                       
+
+                    case 2:                                  
+                        buttonProductionDate = QDateEdit()
+                        buttonProductionDate.setFixedWidth(80)
+                        buttonProductionDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(row, rowItem+1).text(), '%d.%m.%Y'))                     
+                        if silo == 0:       
+                            buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(4)) 
+                        else: 
+                            buttonProductionDate.dateChanged.connect(lambda: self.productionStartDateChangedInTable(3))                                            
+                        otherTable.setCellWidget(rowPosition, rowItem, buttonProductionDate) 
+
+                    case 3:                                  
+                        buttonProductionDate = QDateEdit()
+                        buttonProductionDate.setFixedWidth(80)
+                        buttonProductionDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(row, rowItem).text(), '%d.%m.%Y'))                    
+                        if silo == 0:       
+                            buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(4)) 
+                        else: 
+                            buttonProductionDate.dateChanged.connect(lambda: self.productionEndDateChangedInTable(3))               
+                        otherTable.setCellWidget(rowPosition, rowItem, buttonProductionDate)                            
+
+                    case 4:                                
+                        whichArticle = QComboBox()  
+                        whichArticle.addItem(whichTable.cellWidget(row, rowItem).currentText())                                      
+                        whichArticle.setCurrentText(whichTable.cellWidget(row, rowItem).currentText())                                   
+                        if whichTable.cellWidget(row, rowItem).currentText() in self.articleNoList:                                    
+                            
+                            whichIcon = self.colorList[self.dictArticleColors[whichTable.cellWidget(row, rowItem).currentText()]][0]+'.png'                   
+                            whichArticle.setItemIcon(0, QIcon(QIcon(os.path.join(self.imagePath, 'assets', whichIcon))))
+                    
+                        otherTable.setCellWidget(rowPosition, rowItem, whichArticle)
+                        
+                    case 5:                                         
+                        newBatchNo = QLabel()
+                        if silo == 0:
+                            newBatchNo.setText(whichTable.cellWidget(row, rowItem).text()) 
+                        else:
+                            if table == 1:
+                                newNoHomogenisation = whichTable.cellWidget(row, rowItem).text()[-6:] + '.1'
+                                newBatchNo.setText(str(newNoHomogenisation)) 
+                            else:
+                                newNoHomogenisation = whichTable.cellWidget(row, rowItem).text()[-6:] + '.2'
+                                newBatchNo.setText(str(newNoHomogenisation))
+                        newBatchNo.setFixedWidth(100)
+                        otherTable.setCellWidget(rowPosition, rowItem, newBatchNo) 
+
+                    case 6:                                         
+                        newDispo = QLabel()
+                        newDispo.setText(whichTable.cellWidget(row, rowItem).text())
+                        newDispo.setFixedWidth(100)
+                        otherTable.setCellWidget(rowPosition, rowItem, newDispo)    
+
+                    case 7:                                
+                        whichCustomer = QLabel()                                                                        
+                        whichCustomer.setText(whichTable.cellWidget(row, rowItem).currentText())                                  
+                        otherTable.setCellWidget(rowPosition, rowItem, whichCustomer) 
+
+                    case 8: 
+                        if silo == 0:
+                            whichPackaging = QComboBox()
+                            whichPackaging.addItems(attrSiloDelivery)  
+                            whichPackaging.setCurrentIndex(0)                                      
+                        else:
+                            whichPackaging = QLabel()
+                            whichPackaging.setText('Homogenisierung')
+                        
+                        #whichPackaging.currentIndexChanged.connect(lambda: self.labChanged(1))
+                        otherTable.setCellWidget(rowPosition, rowItem, whichPackaging)      
+
+                    case 9:               
+                        whichLab = QLabel()                                        
+                        whichLab.setText(whichTable.cellWidget(row, rowItem).currentText())
+                        whichLab.setFixedWidth(80)                                                              
+                        otherTable.setCellWidget(rowPosition, rowItem, whichLab)                           
+                            
+                    case 10:                                  
+                        buttonDeliveryDate = QDateEdit()
+                        buttonDeliveryDate.setFixedWidth(80)
+                        buttonDeliveryDate.setDate(datetime.datetime.strptime(whichTable.cellWidget(row, rowItem).text(), '%d.%m.%Y')) 
+                        if silo == 0:       
+                            buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(4)) 
+                        else: 
+                            buttonDeliveryDate.dateChanged.connect(lambda: self.deliveryDateChangedInTable(3))        
+                        buttonDeliveryDate.setDisabled(True)       
+                        otherTable.setCellWidget(rowPosition, rowItem, buttonDeliveryDate)
+
+                    case 11:
+                        whichBatchSize = QLabel()
+                        whichBatchSize.setText(whichTable.cellWidget(row, rowItem).text())
+                        whichBatchSize.setEnabled(True)
+                        whichBatchSize.setFixedWidth(38)
+                        whichBatchSize.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        otherTable.setCellWidget(rowPosition, rowItem, whichBatchSize)
+
+                    case 12:
+                        whichDeliveryDate = QLabel()
+                        whichDeliveryDate.setText(whichTable.cellWidget(row, rowItem).text())                                        
+                        whichDeliveryDate.setFixedWidth(38)
+                        whichDeliveryDate.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        otherTable.setCellWidget(rowPosition, rowItem, whichDeliveryDate) 
+                        
+                        newTimeToDelivery = int(otherTable.cellWidget(rowPosition, rowItem).text() ) 
+
+                        whichActualLab = 0
+                        match otherTable.cellWidget(rowPosition, 9).text():
+                            case 'Dichte':
+                                whichActualLab = 1 
+                            case 'Mechanik':
+                                whichActualLab = 2 
+                            case 'REACh':
+                                whichActualLab = 3 
+
+                        if whichActualLab == 1 and newTimeToDelivery < self.timeDensity:            
+                            otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red')
+                        elif whichActualLab == 2 and newTimeToDelivery < self.timeMechanics:            
+                            otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red') 
+                        elif whichActualLab == 3 and newTimeToDelivery < self.timeReach:            
+                            otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red') 
+                        elif newTimeToDelivery < self.timeNormal:            
+                            otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: red')       
+                        else:
+                            otherTable.cellWidget(rowPosition, 12).setStyleSheet('background-color: white')    
+
+                        if otherTable.cellWidget(rowPosition, 3).date().toString('yyyy.MM.dd') <= datetime.datetime.now().strftime('%Y.%m.%d'):             
+                            otherTable.cellWidget(rowPosition, 3).setStyleSheet('background-color: red')
+                        else:
+                            otherTable.cellWidget(rowPosition, 3).setStyleSheet('background-color: white')                    
+                        
+                    case 13:
+                        whichComment = QLineEdit() 
+                        whichComment.setText(whichTable.cellWidget(row, rowItem).text())
+                        whichComment.setFixedWidth(350)
+                        otherTable.setCellWidget(rowPosition, rowItem, whichComment)          
+            
+            if silo == 1:
+                self.tableBatchesSilo.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()])  
+                self.sortExtruderbyDeliveryDateButton(3)             
+            else:
+                self.tableBatchesHomogenisation.removeRow(self.checkDispoNoSilo[whichTable.cellWidget(row, 6).text()]) 
+                self.sortExtruderbyDeliveryDateButton(4)   
+            
+            for row in range(self.tableBatchesHomogenisation.rowCount()):                    
+                self.tableBatchesHomogenisation.cellWidget(row, 1).setProperty('row', row) 
+                self.tableBatchesHomogenisation.cellWidget(row, 2).setProperty('row', row)           
+                self.tableBatchesHomogenisation.cellWidget(row, 3).setProperty('row', row)
+                self.tableBatchesHomogenisation.cellWidget(row, 4).setProperty('row', row)
+                self.tableBatchesHomogenisation.cellWidget(row, 5).setProperty('row', row)
+                self.tableBatchesHomogenisation.cellWidget(row, 6).setProperty('row', row)
+                self.tableBatchesHomogenisation.cellWidget(row, 7).setProperty('row', row)
+                self.tableBatchesHomogenisation.cellWidget(row, 8).setProperty('row', row)
+                self.tableBatchesHomogenisation.cellWidget(row, 9).setProperty('row', row) 
+                self.tableBatchesHomogenisation.cellWidget(row, 10).setProperty('row', row) 
+                self.tableBatchesHomogenisation.cellWidget(row, 11).setProperty('row', row)            
+                self.checkDispoNoSilo[self.tableBatchesHomogenisation.cellWidget(row, 6).text()] = row
+            for row in range(self.tableBatchesSilo.rowCount()):
+                self.tableBatchesSilo.cellWidget(row, 1).setProperty('row', row) 
+                self.tableBatchesSilo.cellWidget(row, 2).setProperty('row', row)           
+                self.tableBatchesSilo.cellWidget(row, 3).setProperty('row', row)
+                self.tableBatchesSilo.cellWidget(row, 4).setProperty('row', row)
+                self.tableBatchesSilo.cellWidget(row, 5).setProperty('row', row)
+                self.tableBatchesSilo.cellWidget(row, 6).setProperty('row', row)
+                self.tableBatchesSilo.cellWidget(row, 7).setProperty('row', row)
+                self.tableBatchesSilo.cellWidget(row, 8).setProperty('row', row)
+                self.tableBatchesSilo.cellWidget(row, 9).setProperty('row', row) 
+                self.tableBatchesSilo.cellWidget(row, 10).setProperty('row', row)   
+                self.tableBatchesSilo.cellWidget(row, 11).setProperty('row', row)          
+                self.checkDispoNoSilo[self.tableBatchesSilo.cellWidget(row, 6).text()] = row  
 
     def batchSizeChanged(self, table):
-        self.saveFile.setEnabled(True)
-        changedBatchSize = self.sender()            
-        rowBatchSize = changedBatchSize.property('row') 
+        if self.workingOnShiftPlan == False:
+            self.saveFile.setEnabled(True)
+            changedBatchSize = self.sender()            
+            rowBatchSize = changedBatchSize.property('row') 
 
-        if table == 1:            
-            whichTable = self.tableBatchesExtruder1            
-        else:           
-            whichTable = self.tableBatchesExtruder2
+            if table == 1:            
+                whichTable = self.tableBatchesExtruder1            
+            else:           
+                whichTable = self.tableBatchesExtruder2
 
-        if whichTable.cellWidget(rowBatchSize, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
+            if whichTable.cellWidget(rowBatchSize, 6).text() in self.checkDispoNoSilo and (table == 1 or table == 2):
 
-            if whichTable.cellWidget(rowBatchSize, 8).currentText() == 'Silo':
-                self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowBatchSize, 6).text()], 11).setText(changedBatchSize.text())                      
-                                
-            
-            elif whichTable.cellWidget(rowBatchSize, 8).currentText() == 'Homogenisierung':                        
-                self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowBatchSize, 6).text()], 11).setText(changedBatchSize.text())
+                if whichTable.cellWidget(rowBatchSize, 8).currentText() == 'Silo':
+                    self.tableBatchesSilo.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowBatchSize, 6).text()], 11).setText(changedBatchSize.text())                      
+                                    
+                
+                elif whichTable.cellWidget(rowBatchSize, 8).currentText() == 'Homogenisierung':                        
+                    self.tableBatchesHomogenisation.cellWidget(self.checkDispoNoSilo[whichTable.cellWidget(rowBatchSize, 6).text()], 11).setText(changedBatchSize.text())
      
     def sortExtruderbyDeliveryDateButton(self, table):
         
@@ -4878,7 +4886,6 @@ class MainWindow(QMainWindow):
                                         whichComment.setFixedWidth(350)
                                         otherTable.setCellWidget(rowPosition, rowItem, whichComment)
                                           
-
     def generateAdditiveUsage(self):
         self.additiveUsageText.clear()
         tableList = [self.tableBatchesExtruder1, self.tableBatchesExtruder2]
